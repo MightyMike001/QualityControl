@@ -2,13 +2,30 @@
 
 create extension if not exists "pgcrypto";
 
+
+-- Types -----------------------------------------------------------------
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_type where typname = 'qc_status'
+  ) then
+    create type public.qc_status as enum (
+      'GOEDGEKEURD',
+      'AFGEKEURD',
+      'GOED NA AFKEUR'
+    );
+  end if;
+end;
+$$;
+
 -- Tabellen --------------------------------------------------------------
 
 create table if not exists public.qc_record (
   id uuid primary key default gen_random_uuid(),
   serial text not null,
   worker_initials text not null,
-  status text not null,
+  status public.qc_status not null,
   description text,
   qc_date date not null default current_date,
   created_at timestamptz not null default now()
@@ -27,21 +44,24 @@ create or replace view public.v_qc_worker_stats as
 select
   worker_initials,
   count(*) as total,
-  count(*) filter (where status = 'GOEDGEKEURD') as ok,
-  count(*) filter (where status = 'AFGEKEURD') as nok,
-  count(*) filter (where status = 'GOED NA AFKEUR') as rework
+  count(*) filter (where status = 'GOEDGEKEURD'::public.qc_status) as ok,
+  count(*) filter (where status = 'AFGEKEURD'::public.qc_status) as nok,
+  count(*) filter (where status = 'GOED NA AFKEUR'::public.qc_status) as rework
 from public.qc_record
 group by worker_initials;
 
 -- Functie ---------------------------------------------------------------
 
-create or replace function public.qc_insert_record_with_photos(
+drop function if exists public.qc_insert_record_with_photos(text, text, text, text, date, text[]);
+drop function if exists public.qc_insert_record_with_photos(text, text, public.qc_status, text, date, jsonb);
+
+create function public.qc_insert_record_with_photos(
   p_serial text,
   p_worker_initials text,
-  p_status text,
+  p_status public.qc_status,
   p_description text,
   p_qc_date date,
-  p_photo_paths text[]
+  p_photo_paths jsonb
 )
 returns uuid
 language plpgsql
@@ -50,17 +70,15 @@ set search_path = public
 as $$
 declare
   new_id uuid;
-  path text;
 begin
   insert into public.qc_record (serial, worker_initials, status, description, qc_date)
   values (p_serial, p_worker_initials, p_status, nullif(p_description, ''), coalesce(p_qc_date, current_date))
   returning id into new_id;
 
-  if array_length(p_photo_paths, 1) is not null then
-    foreach path in array p_photo_paths loop
-      insert into public.qc_photo (record_id, storage_path)
-      values (new_id, path);
-    end loop;
+  if p_photo_paths is not null and jsonb_typeof(p_photo_paths) = 'array' then
+    insert into public.qc_photo (record_id, storage_path)
+    select new_id, value
+    from jsonb_array_elements_text(p_photo_paths);
   end if;
 
   return new_id;
