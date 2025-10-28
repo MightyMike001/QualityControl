@@ -60,14 +60,13 @@
 <body>
   <div class="app">
     <h1 class="title">Quality Control – Supabase</h1>
-    <div class="mini">Supabase-communicatie actief. Foto's → Storage, records → Postgres. Valt terug op localStorage bij fout.</div>
+    <div class="mini">Supabase-communicatie actief. Foto's → Storage, records → Postgres.</div>
 
     <div class="tabs" role="tablist" aria-label="QC tabs">
       <button class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
       <button class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
       <div style="margin-left:auto;display:flex;gap:8px">
-        <button id="exportCsv" class="btn" type="button">Exporteer CSV (lokaal)</button>
-        <button id="clearAll" class="btn warn" type="button">Leeg lokaal</button>
+        <button id="exportCsv" class="btn" type="button">Exporteer CSV (Supabase)</button>
       </div>
     </div>
 
@@ -128,7 +127,7 @@
       </div>
 
       <div class="card">
-        <h3 style="margin:0 0 6px">Laatste registraties (lokaal)</h3>
+        <h3 style="margin:0 0 6px">Laatste registraties (Supabase)</h3>
         <table id="recent">
           <thead>
             <tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Foto's</th></tr>
@@ -193,12 +192,9 @@
       return `id-${Date.now().toString(16)}-${Math.random().toString(16).slice(2,10)}`;
     }
 
-    // ===== Helpers (local) =====
+    // ===== Helpers =====
     const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
-    const LS_KEY = 'qcsimple:records';
     const today = () => new Date().toISOString().slice(0,10);
-    const loadAll = () => { try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]')}catch{return []} };
-    const saveAll = arr => localStorage.setItem(LS_KEY, JSON.stringify(arr));
     const toDataUrl = file => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});
     function dataUrlToBlob(dataUrl){ const [meta,b64]=dataUrl.split(','); const mime=(meta.match(/:(.*?);/)||[])[1]||'image/jpeg'; const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:mime}); }
 
@@ -272,7 +268,7 @@
     $('#date').value=today();
     $('#photos').addEventListener('change', async (e)=>{ const prev=$('#thumbs'); prev.innerHTML=''; camShots.forEach(renderThumb); const files=Array.from(e.target.files||[]).slice(0,12); for(const f of files){ const d=await toDataUrl(f); renderThumb(d); } });
 
-    // ===== Save (Supabase + fallback local) =====
+    // ===== Save (Supabase) =====
     $('#save').addEventListener('click', async ()=>{
       const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
       try{
@@ -285,54 +281,99 @@
         for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${safeUUID()}.jpg`; const {error:upErr2}=await bucket.upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
         // atomic insert
         const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:photoPaths });
-        if(error) throw error; $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
-      }catch(e){ console.warn('Supabase save failed, fallback local', e); const files=Array.from($('#photos').files||[]); const photos=[...camShots]; for(const f of files){ const d=await toDataUrl(f); photos.push(d); } const rec={id:safeUUID(),date,initials,serial,status,desc,photos,ts:Date.now()}; const all=loadAll(); all.unshift(rec); saveAll(all); $('#saveNote').textContent='Opgeslagen (lokaal)'; }
-      renderRecent(); resetForm(false); stopCamera();
+        if(error) throw error;
+        $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
+        await renderRecent();
+        resetForm(false);
+        stopCamera();
+      }catch(e){
+        console.error('Supabase save failed', e);
+        $('#saveNote').textContent=`Opslaan mislukt: ${e.message||e}`;
+      }
     });
 
     function resetForm(clearDate=true){ $('#serial').value=''; $('#initials').value=''; $('#status').value='GOEDGEKEURD'; $('#desc').value=''; $('#photos').value=''; $('#thumbs').innerHTML=''; camShots=[]; if(clearDate) $('#date').value=today(); setTimeout(()=>$('#saveNote').textContent='',2000); }
     $('#resetForm').addEventListener('click',()=>resetForm());
 
-    function renderRecent(){
+    async function renderRecent(){
       const tbody=$('#recent tbody');
       if(!tbody) return;
-      tbody.innerHTML='';
-      const all=loadAll().slice(0,10);
-      if(!all.length){
-        const empty=document.createElement('tr');
-        empty.innerHTML='<td colspan="5">Geen lokale registraties</td>';
-        tbody.appendChild(empty);
-        return;
-      }
-      for(const r of all){
-        const tr=document.createElement('tr');
-        const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>');
-        const localPhotos=Array.isArray(r.photos)?r.photos.filter(Boolean):[];
-        const photoCnt=localPhotos.length;
-        const dateTd=document.createElement('td'); dateTd.textContent=r.date;
-        const initTd=document.createElement('td'); initTd.textContent=r.initials;
-        const serialTd=document.createElement('td'); serialTd.textContent=r.serial;
-        const statusTd=document.createElement('td'); statusTd.innerHTML=badge;
-        const photosTd=document.createElement('td');
-        if(photoCnt){
-          const btn=document.createElement('button');
-          btn.type='button';
-          btn.className='btn link';
-          btn.textContent=`Bekijk (${photoCnt})`;
-          btn.addEventListener('click',()=>openViewer(localPhotos,0));
-          photosTd.appendChild(btn);
-        }else{
-          photosTd.textContent='–';
+      tbody.innerHTML='<tr><td colspan="5">Laden...</td></tr>';
+      try{
+        const { data, error } = await supa
+          .from('qc_record')
+          .select('id,qc_date,worker_initials,serial,status,qc_photo(id)')
+          .order('qc_date',{ascending:false})
+          .order('created_at',{ascending:false})
+          .limit(10);
+        if(error) throw error;
+        const items=data||[];
+        if(!items.length){
+          tbody.innerHTML='<tr><td colspan="5">Geen registraties</td></tr>';
+          return;
         }
-        tr.append(dateTd, initTd, serialTd, statusTd, photosTd);
-        tbody.appendChild(tr);
+        tbody.innerHTML='';
+        for(const r of items){
+          const tr=document.createElement('tr');
+          const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>');
+          const photoCnt=Array.isArray(r.qc_photo)?r.qc_photo.length:0;
+          const dateTd=document.createElement('td'); dateTd.textContent=r.qc_date;
+          const initTd=document.createElement('td'); initTd.textContent=r.worker_initials;
+          const serialTd=document.createElement('td'); serialTd.textContent=r.serial;
+          const statusTd=document.createElement('td'); statusTd.innerHTML=badge;
+          const photosTd=document.createElement('td');
+          if(photoCnt){
+            const btn=document.createElement('button');
+            btn.type='button';
+            btn.className='btn link';
+            btn.textContent=`Bekijk (${photoCnt})`;
+            btn.addEventListener('click',()=>viewSupabasePhotos(r.id, btn));
+            photosTd.appendChild(btn);
+          }else{
+            photosTd.textContent='–';
+          }
+          tr.append(dateTd, initTd, serialTd, statusTd, photosTd);
+          tbody.appendChild(tr);
+        }
+      }catch(e){
+        console.error('renderRecent', e);
+        tbody.innerHTML=`<tr><td colspan="5">Fout bij laden: ${e.message||e}</td></tr>`;
       }
     }
     renderRecent();
 
-    // CSV export / clear local
-    $('#exportCsv').addEventListener('click',()=>{ const all=loadAll(); const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"'; const headers=['id','date','initials','serial','status','desc','photo_count']; const rows=all.map(r=>({id:r.id,date:r.date,initials:r.initials,serial:r.serial,status:r.status,desc:r.desc,photo_count:(r.photos?.length||0)})); const csv=[headers.map(esc).join(','),...rows.map(o=>headers.map(h=>esc(o[h])).join(','))].join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`qc_simple_${today()}.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); });
-    $('#clearAll').addEventListener('click',()=>{ if(confirm('Alles verwijderen (lokaal)?')){ localStorage.removeItem(LS_KEY); renderRecent(); }});
+    // CSV export (Supabase)
+    $('#exportCsv').addEventListener('click', async ()=>{
+      try{
+        const { data, error } = await supa
+          .from('qc_record')
+          .select('id,qc_date,worker_initials,serial,status,description,qc_photo(id)')
+          .order('qc_date',{ascending:false})
+          .limit(1000);
+        if(error) throw error;
+        const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
+        const headers=['id','qc_date','initials','serial','status','description','photo_count'];
+        const rows=(data||[]).map(r=>({
+          id:r.id,
+          qc_date:r.qc_date,
+          initials:r.worker_initials,
+          serial:r.serial,
+          status:r.status,
+          description:r.description||'',
+          photo_count:Array.isArray(r.qc_photo)?r.qc_photo.length:0
+        }));
+        if(!rows.length){ alert('Geen Supabase-data om te exporteren.'); return; }
+        const csv=[headers.map(esc).join(','),...rows.map(o=>headers.map(h=>esc(o[h])).join(','))].join('\n');
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+        a.download=`qc_supabase_${today()}.csv`;
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+      }catch(e){
+        console.error('exportCsv', e);
+        alert(`CSV export mislukt: ${e.message||e}`);
+      }
+    });
 
     // ===== Dashboard (Supabase) =====
     async function renderDashboardSupabase(){
