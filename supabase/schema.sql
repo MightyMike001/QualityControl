@@ -26,6 +26,7 @@ create table if not exists public.qc_record (
   serial text not null,
   worker_initials text not null,
   status public.qc_status not null,
+  report text,
   description text,
   qc_date date not null default current_date,
   created_at timestamptz not null default now()
@@ -53,12 +54,15 @@ group by worker_initials;
 -- Functie ---------------------------------------------------------------
 
 drop function if exists public.qc_insert_record_with_photos(text, text, text, text, date, text[]);
+drop function if exists public.qc_insert_record_with_photos(text, text, text, text, text, date, text[]);
 drop function if exists public.qc_insert_record_with_photos(text, text, public.qc_status, text, date, jsonb);
+drop function if exists public.qc_insert_record_with_photos(text, text, public.qc_status, text, text, date, jsonb);
 
 create function public.qc_insert_record_with_photos(
   p_serial text,
   p_worker_initials text,
   p_status public.qc_status,
+  p_report text,
   p_description text,
   p_qc_date date,
   p_photo_paths jsonb
@@ -71,8 +75,8 @@ as $$
 declare
   new_id uuid;
 begin
-  insert into public.qc_record (serial, worker_initials, status, description, qc_date)
-  values (p_serial, p_worker_initials, p_status, nullif(p_description, ''), coalesce(p_qc_date, current_date))
+  insert into public.qc_record (serial, worker_initials, status, report, description, qc_date)
+  values (p_serial, p_worker_initials, p_status, nullif(p_report, ''), nullif(p_description, ''), coalesce(p_qc_date, current_date))
   returning id into new_id;
 
   if p_photo_paths is not null and jsonb_typeof(p_photo_paths) = 'array' then

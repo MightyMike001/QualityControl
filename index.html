@@ -95,6 +95,10 @@
             <option value="GOED NA AFKEUR">Goed na afkeur</option>
           </select>
         </div>
+        <div class="col">
+          <label for="report">Melding</label>
+          <input id="report" placeholder="Bijv. M-2024-001" />
+        </div>
       </div>
 
       <div>
@@ -152,7 +156,7 @@
         </div>
         <div class="card">
           <h3 style="margin:0 0 6px">Details (Supabase)</h3>
-          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Beschrijving</th><th>Foto's</th></tr></thead><tbody></tbody></table>
+          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Melding</th><th>Beschrijving</th><th>Foto's</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </section>
@@ -328,7 +332,7 @@
     }
 
     $('#save').addEventListener('click', async ()=>{
-      const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
+      const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const report=$('#report').value.trim(); const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
       try{
         // upload naar Storage
         const folder=`records/${safeUUID()}`;
@@ -336,7 +340,7 @@
         const photoPaths=await uploadPhotosWithFallback(folder, files, camShots);
         // atomic insert
         const rpcPhotoPaths = photoPaths.length ? photoPaths : [];
-        const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:rpcPhotoPaths });
+        const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_report:report||null, p_description:desc||null, p_qc_date:date, p_photo_paths:rpcPhotoPaths });
         if(error) throw error;
         $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
         await renderRecent();
@@ -348,7 +352,7 @@
       }
     });
 
-    function resetForm(clearDate=true){ $('#serial').value=''; $('#initials').value=''; $('#status').value='GOEDGEKEURD'; $('#desc').value=''; $('#photos').value=''; $('#thumbs').innerHTML=''; camShots=[]; if(clearDate) $('#date').value=today(); setTimeout(()=>$('#saveNote').textContent='',2000); }
+    function resetForm(clearDate=true){ $('#serial').value=''; $('#initials').value=''; $('#status').value='GOEDGEKEURD'; $('#report').value=''; $('#desc').value=''; $('#photos').value=''; $('#thumbs').innerHTML=''; camShots=[]; if(clearDate) $('#date').value=today(); setTimeout(()=>$('#saveNote').textContent='',2000); }
     $('#resetForm').addEventListener('click',()=>resetForm());
 
     async function renderRecent(){
@@ -403,18 +407,19 @@
       try{
         const { data, error } = await supa
           .from('qc_record')
-          .select('id,qc_date,worker_initials,serial,status,description,qc_photo(id)')
+          .select('id,qc_date,worker_initials,serial,status,report,description,qc_photo(id)')
           .order('qc_date',{ascending:false})
           .limit(1000);
         if(error) throw error;
         const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';
-        const headers=['id','qc_date','initials','serial','status','description','photo_count'];
+        const headers=['id','qc_date','initials','serial','status','report','description','photo_count'];
         const rows=(data||[]).map(r=>({
           id:r.id,
           qc_date:r.qc_date,
           initials:r.worker_initials,
           serial:r.serial,
           status:r.status,
+          report:r.report||'',
           description:r.description||'',
           photo_count:Array.isArray(r.qc_photo)?r.qc_photo.length:0
         }));
@@ -439,14 +444,14 @@
       let { data: stats, error: statsErr } = await supa.from('v_qc_worker_stats').select('*');
       if(statsErr){ byWorkerTbody.innerHTML=`<tr><td colspan="5">Fout: ${statsErr.message}</td></tr>`; } else { if(who) stats=stats.filter(r=>r.worker_initials===who); const rows=(stats||[]).sort((a,b)=>a.worker_initials.localeCompare(b.worker_initials)).map(r=>`<tr><td><strong>${r.worker_initials}</strong></td><td>${r.total}</td><td>${r.ok}</td><td>${r.nok}</td><td>${r.rework}</td></tr>`).join(''); byWorkerTbody.innerHTML=rows||'<tr><td colspan="5">Geen data</td></tr>'; }
       // details
-      let q=supa.from('qc_record').select('id,qc_date,worker_initials,serial,status,description').order('qc_date',{ascending:false}).limit(500);
+      let q=supa.from('qc_record').select('id,qc_date,worker_initials,serial,status,report,description').order('qc_date',{ascending:false}).limit(500);
       if(from) q=q.gte('qc_date',from); if(to) q=q.lte('qc_date',to); if(who) q=q.eq('worker_initials',who);
       const { data: details, error: detErr } = await q;
-      if(detErr){ detailTbody.innerHTML=`<tr><td colspan="6">Fout: ${detErr.message}</td></tr>`; }
+      if(detErr){ detailTbody.innerHTML=`<tr><td colspan="7">Fout: ${detErr.message}</td></tr>`; }
       else{
         const items=details||[];
         if(!items.length){
-          detailTbody.innerHTML='<tr><td colspan="6">Geen details</td></tr>';
+          detailTbody.innerHTML='<tr><td colspan="7">Geen details</td></tr>';
         }else{
           for(const r of items){
             const tr=document.createElement('tr');
@@ -455,6 +460,7 @@
             const initTd=document.createElement('td'); initTd.textContent=r.worker_initials;
             const serialTd=document.createElement('td'); serialTd.textContent=r.serial;
             const statusTd=document.createElement('td'); statusTd.innerHTML=badge;
+            const reportTd=document.createElement('td'); reportTd.textContent=r.report||'';
             const descTd=document.createElement('td'); descTd.textContent=r.description||'';
             const photosTd=document.createElement('td');
             const btn=document.createElement('button');
@@ -463,7 +469,7 @@
             btn.textContent='Bekijk';
             btn.addEventListener('click',()=>viewSupabasePhotos(r.id, btn));
             photosTd.appendChild(btn);
-            tr.append(dateTd, initTd, serialTd, statusTd, descTd, photosTd);
+            tr.append(dateTd, initTd, serialTd, statusTd, reportTd, descTd, photosTd);
             detailTbody.appendChild(tr);
           }
         }
