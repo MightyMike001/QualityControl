@@ -28,6 +28,8 @@
     .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     .btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
     .btn.warn{background:var(--nok);color:#fff;border-color:var(--nok)}
+    .btn.link{border:none;background:none;color:var(--accent);padding:0;font-weight:600}
+    .btn.link:hover{text-decoration:underline;background:none}
     .tab:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
     @media (prefers-reduced-motion: reduce){.tab,.btn{transition:none}}
     .grid{display:grid;gap:10px}
@@ -44,6 +46,15 @@
     canvas#snap{display:none}
     .thumb{position:relative}
     .thumb button.del{position:absolute;top:4px;right:4px;border:1px solid var(--border);background:#fff;color:var(--nok);border-radius:8px;padding:2px 6px;cursor:pointer}
+    .viewer{position:fixed;inset:0;background:rgba(17,24,39,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;backdrop-filter:blur(3px)}
+    .viewer[hidden]{display:none}
+    .viewer-inner{position:relative;background:#000;border-radius:12px;max-width:90vw;max-height:90vh;padding:12px;display:flex;flex-direction:column;gap:12px}
+    .viewer-inner img{max-width:80vw;max-height:70vh;object-fit:contain;border-radius:8px;background:#111}
+    .viewer-controls{display:flex;align-items:center;justify-content:center;gap:12px;color:#fff}
+    .viewer-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:999px;width:32px;height:32px;font-size:20px;cursor:pointer}
+    .viewer-close:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+    .viewer-nav{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .viewer-nav[disabled]{opacity:.5;cursor:default}
   </style>
 </head>
 <body>
@@ -142,10 +153,22 @@
         </div>
         <div class="card">
           <h3 style="margin:0 0 6px">Details (Supabase)</h3>
-          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Beschrijving</th></tr></thead><tbody></tbody></table>
+          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Beschrijving</th><th>Foto's</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </section>
+  </div>
+
+  <div id="photoViewer" class="viewer" hidden aria-hidden="true">
+    <div class="viewer-inner" role="dialog" aria-modal="true" aria-label="Foto viewer">
+      <button type="button" class="viewer-close" id="viewerClose" aria-label="Sluiten">×</button>
+      <img id="viewerImage" alt="QC-foto" />
+      <div class="viewer-controls">
+        <button type="button" class="viewer-nav" id="viewerPrev">Vorige</button>
+        <span id="viewerCounter"></span>
+        <button type="button" class="viewer-nav" id="viewerNext">Volgende</button>
+      </div>
+    </div>
   </div>
 
   <!-- Supabase JS v2 -->
@@ -179,6 +202,38 @@
     const toDataUrl = file => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});
     function dataUrlToBlob(dataUrl){ const [meta,b64]=dataUrl.split(','); const mime=(meta.match(/:(.*?);/)||[])[1]||'image/jpeg'; const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:mime}); }
 
+    // ===== Photo viewer =====
+    let viewerPhotos=[], viewerIndex=0;
+    function updateViewer(){
+      if(!viewerPhotos.length){ closeViewer(); return; }
+      const img=$('#viewerImage');
+      const counter=$('#viewerCounter');
+      const prev=$('#viewerPrev');
+      const next=$('#viewerNext');
+      img.src=viewerPhotos[viewerIndex];
+      counter.textContent=`${viewerIndex+1} / ${viewerPhotos.length}`;
+      const disableNav=viewerPhotos.length<=1;
+      prev.disabled=disableNav;
+      next.disabled=disableNav;
+    }
+    function openViewer(photos,startIndex=0){
+      if(!photos?.length) return;
+      viewerPhotos=photos.slice();
+      viewerIndex=Math.min(Math.max(startIndex,0), viewerPhotos.length-1);
+      $('#photoViewer').hidden=false;
+      $('#photoViewer').setAttribute('aria-hidden','false');
+      document.body.style.overflow='hidden';
+      updateViewer();
+    }
+    function closeViewer(){
+      $('#photoViewer').hidden=true;
+      $('#photoViewer').setAttribute('aria-hidden','true');
+      viewerPhotos=[];
+      viewerIndex=0;
+      document.body.style.overflow='';
+    }
+
+
     // ===== Camera =====
     let camStream=null, camFacing='environment', camShots=[];
     async function openCamera(){
@@ -189,7 +244,26 @@
     }
     function stopCamera(){ const v=$('#cam'); if(camStream){camStream.getTracks().forEach(t=>t.stop()); camStream=null;} v.srcObject=null; v.style.display='none'; $('#takeShot').disabled=$('#flipCam').disabled=$('#closeCam').disabled=true; }
     function capturePhoto(){ const v=$('#cam'); if(!v.videoWidth) return; const c=$('#snap'); c.width=v.videoWidth; c.height=v.videoHeight; const ctx=c.getContext('2d'); ctx.drawImage(v,0,0,c.width,c.height); const ts=new Date().toISOString().replace('T',' ').slice(0,19); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(10,c.height-34,200,24); ctx.fillStyle='#fff'; ctx.font='16px system-ui'; ctx.fillText(ts,16,c.height-18); const d=c.toDataURL('image/jpeg',0.85); camShots.unshift(d); renderThumb(d); }
-    function renderThumb(data){ const wrap=document.createElement('div'); wrap.className='thumb'; const img=new Image(); img.src=data; img.loading='lazy'; const del=document.createElement('button'); del.className='del'; del.textContent='✕'; del.addEventListener('click',()=>{wrap.remove(); camShots=camShots.filter(d=>d!==data)}); wrap.appendChild(img); wrap.appendChild(del); $('#thumbs').prepend(wrap); }
+    function renderThumb(data){
+      const wrap=document.createElement('div');
+      wrap.className='thumb';
+      const img=new Image();
+      img.src=data;
+      img.alt='QC-foto';
+      img.loading='lazy';
+      img.addEventListener('click',()=>{
+        const all=$$('#thumbs img').map(node=>node.src);
+        const idx=all.indexOf(img.src);
+        openViewer(all, idx>=0?idx:0);
+      });
+      const del=document.createElement('button');
+      del.className='del';
+      del.textContent='✕';
+      del.addEventListener('click',()=>{wrap.remove(); camShots=camShots.filter(d=>d!==data);});
+      wrap.appendChild(img);
+      wrap.appendChild(del);
+      $('#thumbs').prepend(wrap);
+    }
 
     // ===== Tabs =====
     $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{ $$('.tab').forEach(b=>{b.classList.remove('active'); b.setAttribute('aria-selected','false')}); btn.classList.add('active'); btn.setAttribute('aria-selected','true'); const tab=btn.dataset.tab; $('#form').style.display=tab==='form'?'block':'none'; $('#dashboard').style.display=tab==='dashboard'?'block':'none'; if(tab==='dashboard'){ stopCamera(); renderDashboardSupabase(); }}));
@@ -219,7 +293,41 @@
     function resetForm(clearDate=true){ $('#serial').value=''; $('#initials').value=''; $('#status').value='GOEDGEKEURD'; $('#desc').value=''; $('#photos').value=''; $('#thumbs').innerHTML=''; camShots=[]; if(clearDate) $('#date').value=today(); setTimeout(()=>$('#saveNote').textContent='',2000); }
     $('#resetForm').addEventListener('click',()=>resetForm());
 
-    function renderRecent(){ const tbody=$('#recent tbody'); if(!tbody) return; tbody.innerHTML=''; const all=loadAll().slice(0,10); for(const r of all){ const tr=document.createElement('tr'); const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>'); const photoCnt=r.photos?.length||0; tr.innerHTML=`<td>${r.date}</td><td>${r.initials}</td><td>${r.serial}</td><td>${badge}</td><td>${photoCnt}</td>`; tbody.appendChild(tr); } }
+    function renderRecent(){
+      const tbody=$('#recent tbody');
+      if(!tbody) return;
+      tbody.innerHTML='';
+      const all=loadAll().slice(0,10);
+      if(!all.length){
+        const empty=document.createElement('tr');
+        empty.innerHTML='<td colspan="5">Geen lokale registraties</td>';
+        tbody.appendChild(empty);
+        return;
+      }
+      for(const r of all){
+        const tr=document.createElement('tr');
+        const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>');
+        const localPhotos=Array.isArray(r.photos)?r.photos.filter(Boolean):[];
+        const photoCnt=localPhotos.length;
+        const dateTd=document.createElement('td'); dateTd.textContent=r.date;
+        const initTd=document.createElement('td'); initTd.textContent=r.initials;
+        const serialTd=document.createElement('td'); serialTd.textContent=r.serial;
+        const statusTd=document.createElement('td'); statusTd.innerHTML=badge;
+        const photosTd=document.createElement('td');
+        if(photoCnt){
+          const btn=document.createElement('button');
+          btn.type='button';
+          btn.className='btn link';
+          btn.textContent=`Bekijk (${photoCnt})`;
+          btn.addEventListener('click',()=>openViewer(localPhotos,0));
+          photosTd.appendChild(btn);
+        }else{
+          photosTd.textContent='–';
+        }
+        tr.append(dateTd, initTd, serialTd, statusTd, photosTd);
+        tbody.appendChild(tr);
+      }
+    }
     renderRecent();
 
     // CSV export / clear local
@@ -234,19 +342,76 @@
       let { data: stats, error: statsErr } = await supa.from('v_qc_worker_stats').select('*');
       if(statsErr){ byWorkerTbody.innerHTML=`<tr><td colspan="5">Fout: ${statsErr.message}</td></tr>`; } else { if(who) stats=stats.filter(r=>r.worker_initials===who); const rows=(stats||[]).sort((a,b)=>a.worker_initials.localeCompare(b.worker_initials)).map(r=>`<tr><td><strong>${r.worker_initials}</strong></td><td>${r.total}</td><td>${r.ok}</td><td>${r.nok}</td><td>${r.rework}</td></tr>`).join(''); byWorkerTbody.innerHTML=rows||'<tr><td colspan="5">Geen data</td></tr>'; }
       // details
-      let q=supa.from('qc_record').select('qc_date,worker_initials,serial,status,description').order('qc_date',{ascending:false}).limit(500);
+      let q=supa.from('qc_record').select('id,qc_date,worker_initials,serial,status,description').order('qc_date',{ascending:false}).limit(500);
       if(from) q=q.gte('qc_date',from); if(to) q=q.lte('qc_date',to); if(who) q=q.eq('worker_initials',who);
       const { data: details, error: detErr } = await q;
-      if(detErr){ detailTbody.innerHTML=`<tr><td colspan="5">Fout: ${detErr.message}</td></tr>`; }
-      else{ const rows=(details||[]).map(r=>{ const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>'); return `<tr><td>${r.qc_date}</td><td>${r.worker_initials}</td><td>${r.serial}</td><td>${badge}</td><td>${r.description||''}</td></tr>`; }).join(''); detailTbody.innerHTML=rows||'<tr><td colspan="5">Geen details</td></tr>'; }
+      if(detErr){ detailTbody.innerHTML=`<tr><td colspan="6">Fout: ${detErr.message}</td></tr>`; }
+      else{
+        const items=details||[];
+        if(!items.length){
+          detailTbody.innerHTML='<tr><td colspan="6">Geen details</td></tr>';
+        }else{
+          for(const r of items){
+            const tr=document.createElement('tr');
+            const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>');
+            const dateTd=document.createElement('td'); dateTd.textContent=r.qc_date;
+            const initTd=document.createElement('td'); initTd.textContent=r.worker_initials;
+            const serialTd=document.createElement('td'); serialTd.textContent=r.serial;
+            const statusTd=document.createElement('td'); statusTd.innerHTML=badge;
+            const descTd=document.createElement('td'); descTd.textContent=r.description||'';
+            const photosTd=document.createElement('td');
+            const btn=document.createElement('button');
+            btn.type='button';
+            btn.className='btn link';
+            btn.textContent='Bekijk';
+            btn.addEventListener('click',()=>viewSupabasePhotos(r.id, btn));
+            photosTd.appendChild(btn);
+            tr.append(dateTd, initTd, serialTd, statusTd, descTd, photosTd);
+            detailTbody.appendChild(tr);
+          }
+        }
+      }
     }
     $('#applyFilters').addEventListener('click', renderDashboardSupabase);
+
+    async function viewSupabasePhotos(recordId, triggerEl){
+      if(!recordId) return;
+      const btn=triggerEl;
+      const originalText=btn?.textContent;
+      if(btn){ btn.disabled=true; btn.textContent='Laden...'; }
+      try{
+        const { data, error } = await supa.from('qc_photo').select('path').eq('record_id', recordId);
+        if(error) throw error;
+        if(!data?.length){ alert('Geen foto\'s gevonden.'); return; }
+        const bucket=supa.storage.from(STORAGE_BUCKET);
+        const urls=[];
+        for(const row of data){
+          const { data: signed, error: signedErr } = await bucket.createSignedUrl(row.path, 300);
+          if(signedErr) throw signedErr;
+          if(signed?.signedUrl) urls.push(signed.signedUrl);
+        }
+        if(!urls.length){ alert('Geen foto\'s beschikbaar.'); return; }
+        openViewer(urls);
+      }catch(e){
+        console.error('viewSupabasePhotos', e);
+        alert(`Foto's openen mislukt: ${e.message||e}`);
+      }finally{
+        if(btn){ btn.disabled=false; btn.textContent=originalText; }
+      }
+    }
 
     // ===== Wire camera buttons =====
     $('#openCam').addEventListener('click', openCamera);
     $('#takeShot').addEventListener('click', capturePhoto);
     $('#flipCam').addEventListener('click', async ()=>{ camFacing=(camFacing==='environment')?'user':'environment'; stopCamera(); await openCamera(); });
     $('#closeCam').addEventListener('click', stopCamera);
+
+    // ===== Photo viewer events =====
+    $('#viewerClose').addEventListener('click', closeViewer);
+    $('#photoViewer').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeViewer(); });
+    $('#viewerPrev').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex-1+viewerPhotos.length)%viewerPhotos.length; updateViewer(); }});
+    $('#viewerNext').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex+1)%viewerPhotos.length; updateViewer(); }});
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#photoViewer').hidden){ closeViewer(); } });
 
     // ===== Self-test (light) =====
     (function(){ const t=$('#thumbs'); const prev=t.children.length; renderThumb('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMAAQAABQABe9L2WQAAAABJRU5ErkJggg=='); console.log('Selftest renderThumb:', t.children.length===prev+1); t.firstChild?.remove(); })();
