@@ -172,6 +172,15 @@
     .tab:focus-visible,.btn:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px;}
     @media (prefers-reduced-motion: reduce){.tab,.btn,input,select,textarea{transition:none}}
     .grid{display:grid;gap:18px}
+    .metrics-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));}
+    .metric-card{display:flex;flex-direction:column;gap:8px;padding:18px;background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.7);border-radius:20px;box-shadow:0 16px 30px -26px rgba(15,23,42,.28);}
+    .metric-label{font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+    .metric-value{font-size:1.9rem;font-weight:700;color:var(--muted-strong);}
+    .metric-sub{font-size:.85rem;color:var(--muted);}
+    .chart-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));}
+    .chart-card{display:flex;flex-direction:column;gap:14px;}
+    .chart-card canvas{max-width:100%;}
+    .chart-note{color:var(--muted);font-size:.85rem;}
     .thumbs{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
     .thumbs img{width:130px;height:96px;object-fit:cover;border-radius:18px;border:1px solid rgba(255,255,255,.7);background:#f3f4f6;box-shadow:0 18px 32px -26px rgba(15,23,42,.4);cursor:pointer;transition:transform .2s ease}
     .thumbs img:hover{transform:translateY(-2px);}
@@ -217,8 +226,9 @@
 
         <div class="tabbar">
           <div class="tabs" role="tablist" aria-label="QC tabs">
-            <button class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
-            <button class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
+            <button id="form-tab" class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
+            <button id="dashboard-tab" class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
+            <button id="analysis-tab" class="tab" data-tab="analysis" role="tab" aria-selected="false" aria-controls="analysis">Analyses</button>
           </div>
         </div>
 
@@ -315,6 +325,50 @@
         </div>
       </div>
     </section>
+
+    <!-- ANALYSIS -->
+    <section id="analysis" class="card grid" style="display:none" role="tabpanel" aria-labelledby="analysis-tab">
+      <div class="grid metrics-grid" id="analysisSummary">
+        <div class="metric-card">
+          <span class="metric-label">Totaal (90 dagen)</span>
+          <strong class="metric-value" id="metricTotal">–</strong>
+          <span class="metric-sub" id="metricSpan">–</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">OK-percentage</span>
+          <strong class="metric-value" id="metricOkRate">–</strong>
+          <span class="metric-sub">Goedgekeurde controles</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Unieke werknemers</span>
+          <strong class="metric-value" id="metricWorkers">–</strong>
+          <span class="metric-sub" id="metricWorkersSub">–</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Gemiddeld per dag</span>
+          <strong class="metric-value" id="metricPerDay">–</strong>
+          <span class="metric-sub">Laatste 90 dagen</span>
+        </div>
+      </div>
+
+      <div class="grid chart-grid">
+        <div class="card chart-card">
+          <h3 style="margin:0">Verdeling status</h3>
+          <canvas id="analysisStatusChart" height="220" aria-label="Status verdeling" role="img"></canvas>
+          <p class="chart-note" id="analysisStatusNote">—</p>
+        </div>
+        <div class="card chart-card">
+          <h3 style="margin:0">Trendlijn per maand</h3>
+          <canvas id="analysisTrendChart" height="220" aria-label="Trendlijn per maand" role="img"></canvas>
+          <p class="chart-note" id="analysisTrendNote">—</p>
+        </div>
+        <div class="card chart-card">
+          <h3 style="margin:0">Top werknemers</h3>
+          <canvas id="analysisWorkerChart" height="220" aria-label="Top werknemers" role="img"></canvas>
+          <p class="chart-note" id="analysisWorkerNote">—</p>
+        </div>
+      </div>
+    </section>
       </div>
     </div>
   </div>
@@ -333,6 +387,7 @@
 
   <!-- Supabase JS v2 -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     // ===== Config =====
     const SUPABASE_URL = 'https://kyzpxfkzugxlqfxhadhr.supabase.co';
@@ -340,6 +395,12 @@
     const STORAGE_BUCKET_CANDIDATES = ['qc-photos', 'qc_photos'];
     let resolvedBucketName = null;
     const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const ANALYSIS_WINDOW_DAYS = 90;
+    const ANALYSIS_LOCALE = 'nl-NL';
+    let analysisLoading = false;
+    let statusChart = null;
+    let trendChart = null;
+    let workerChart = null;
     const globalCrypto = globalThis.crypto || globalThis.msCrypto || null;
     function safeUUID(){
       if(globalCrypto?.randomUUID) return globalCrypto.randomUUID();
@@ -357,7 +418,11 @@
     // ===== Helpers =====
     const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
     const today = () => new Date().toISOString().slice(0,10);
+    const numberFormat = new Intl.NumberFormat(ANALYSIS_LOCALE);
+    const percentFormat = new Intl.NumberFormat(ANALYSIS_LOCALE, { minimumFractionDigits:1, maximumFractionDigits:1 });
+    const decimalFormat = new Intl.NumberFormat(ANALYSIS_LOCALE, { minimumFractionDigits:1, maximumFractionDigits:1 });
     function dataUrlToBlob(dataUrl){ const [meta,b64]=dataUrl.split(','); const mime=(meta.match(/:(.*?);/)||[])[1]||'image/jpeg'; const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:mime}); }
+    function isoToDate(iso){ if(!iso) return null; const [y,m,d]=iso.split('-').map(Number); if(!y||!m||!d) return null; return new Date(y, m-1, d); }
 
     // ===== Photo viewer =====
     let viewerPhotos=[], viewerIndex=0;
@@ -423,7 +488,23 @@
     }
 
     // ===== Tabs =====
-    $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{ $$('.tab').forEach(b=>{b.classList.remove('active'); b.setAttribute('aria-selected','false')}); btn.classList.add('active'); btn.setAttribute('aria-selected','true'); const tab=btn.dataset.tab; $('#form').style.display=tab==='form'?'block':'none'; $('#dashboard').style.display=tab==='dashboard'?'block':'none'; if(tab==='dashboard'){ stopCamera(); renderDashboardSupabase(); }}));
+    const tabIds=['form','dashboard','analysis'];
+    function activateTab(tab){
+      tabIds.forEach(id=>{
+        const panel=document.getElementById(id);
+        if(panel){ panel.style.display=id===tab?'block':'none'; }
+      });
+      if(tab!=='form') stopCamera();
+      if(tab==='dashboard') renderDashboardSupabase();
+      if(tab==='analysis') renderAnalysisSupabase();
+    }
+    $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{
+      $$('.tab').forEach(b=>{b.classList.remove('active'); b.setAttribute('aria-selected','false');});
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected','true');
+      const tab=btn.dataset.tab;
+      activateTab(tab);
+    }));
 
     // ===== Init =====
     $('#date').value=today();
@@ -598,6 +679,146 @@
     }
     $('#applyFilters').addEventListener('click', renderDashboardSupabase);
 
+    async function renderAnalysisSupabase(){
+      if(analysisLoading) return;
+      analysisLoading=true;
+      const statusNote=$('#analysisStatusNote');
+      const trendNote=$('#analysisTrendNote');
+      const workerNote=$('#analysisWorkerNote');
+      statusNote.textContent='Laden...';
+      trendNote.textContent='Laden...';
+      workerNote.textContent='Laden...';
+      const cutoffDate=new Date();
+      cutoffDate.setDate(cutoffDate.getDate()-(ANALYSIS_WINDOW_DAYS-1));
+      const cutoffStr=cutoffDate.toISOString().slice(0,10);
+      try{
+        const { data, error } = await supa
+          .from('qc_record')
+          .select('qc_date,worker_initials,status')
+          .gte('qc_date', cutoffStr)
+          .order('qc_date',{ascending:true});
+        if(error) throw error;
+        const records=(data||[]).filter(r=>r?.qc_date);
+        const metricSpan=$('#metricSpan');
+        const metricOkRate=$('#metricOkRate');
+        const metricTotal=$('#metricTotal');
+        const metricWorkers=$('#metricWorkers');
+        const metricWorkersSub=$('#metricWorkersSub');
+        const metricPerDay=$('#metricPerDay');
+        if(!records.length){
+          metricTotal.textContent='0';
+          metricSpan.textContent=`Geen registraties sinds ${cutoffStr}`;
+          metricOkRate.textContent='0%';
+          metricWorkers.textContent='0';
+          metricWorkersSub.textContent='Geen werknemers gevonden';
+          metricPerDay.textContent=decimalFormat.format(0);
+          statusNote.textContent='Geen data voor de geselecteerde periode.';
+          trendNote.textContent='Geen data voor de geselecteerde periode.';
+          workerNote.textContent='Geen data voor de geselecteerde periode.';
+          statusChart?.destroy(); trendChart?.destroy(); workerChart?.destroy();
+          statusChart=trendChart=workerChart=null;
+          analysisLoading=false;
+          return;
+        }
+
+        const firstDate=isoToDate(records[0].qc_date);
+        const lastDate=isoToDate(records[records.length-1].qc_date);
+        metricTotal.textContent=numberFormat.format(records.length);
+        if(firstDate && lastDate){
+          metricSpan.textContent=`${firstDate.toLocaleDateString(ANALYSIS_LOCALE)} – ${lastDate.toLocaleDateString(ANALYSIS_LOCALE)}`;
+        }else{
+          metricSpan.textContent='—';
+        }
+
+        const statusCounts={GOEDGEKEURD:0,AFGEKEURD:0,'GOED NA AFKEUR':0};
+        const workerCounts=new Map();
+        for(const row of records){
+          const status=row.status||'OVERIG';
+          if(statusCounts[status]===undefined) statusCounts[status]=0;
+          statusCounts[status]+=1;
+          const worker=(row.worker_initials||'Onbekend').toUpperCase();
+          workerCounts.set(worker,(workerCounts.get(worker)||0)+1);
+        }
+
+        const okCount=statusCounts.GOEDGEKEURD||0;
+        const total=records.length;
+        const okRate=total?percentFormat.format((okCount/total)*100):percentFormat.format(0);
+        metricOkRate.textContent=`${okRate}%`;
+        metricWorkers.textContent=numberFormat.format(workerCounts.size);
+        if(workerCounts.size){
+          metricWorkersSub.textContent=workerCounts.size===1?'1 werknemer actief in periode':`${numberFormat.format(workerCounts.size)} werknemers actief in periode`;
+        }else{
+          metricWorkersSub.textContent='Geen werknemers gevonden';
+        }
+
+        let daySpan=0;
+        if(firstDate && lastDate){
+          const diff=lastDate.getTime()-firstDate.getTime();
+          daySpan=Math.max(1,Math.round(diff/86400000)+1);
+        }
+        const perDay=total&&daySpan?decimalFormat.format(total/daySpan):decimalFormat.format(0);
+        metricPerDay.textContent=perDay;
+
+        const statusLabels=['Goedgekeurd','Afgekeurd','Goed na afkeur'];
+        const statusValues=[statusCounts.GOEDGEKEURD||0,statusCounts.AFGEKEURD||0,statusCounts['GOED NA AFKEUR']||0];
+        const statusCtx=document.getElementById('analysisStatusChart').getContext('2d');
+        if(statusChart){
+          statusChart.data.labels=statusLabels;
+          statusChart.data.datasets[0].data=statusValues;
+          statusChart.update();
+        }else{
+          statusChart=new Chart(statusCtx,{type:'doughnut',data:{labels:statusLabels,datasets:[{data:statusValues,backgroundColor:['rgba(22,163,74,.7)','rgba(220,38,38,.7)','rgba(234,179,8,.75)'],borderColor:['rgba(22,163,74,1)','rgba(220,38,38,1)','rgba(234,179,8,1)'],borderWidth:1}]},options:{plugins:{legend:{position:'bottom'}},maintainAspectRatio:false,cutout:'55%'}});
+        }
+        statusNote.textContent=`Goedgekeurd: ${numberFormat.format(statusValues[0])} • Afgekeurd: ${numberFormat.format(statusValues[1])} • Goed na afkeur: ${numberFormat.format(statusValues[2])}`;
+
+        const monthCounts=new Map();
+        for(const row of records){
+          const key=(row.qc_date||'').slice(0,7);
+          if(!key) continue;
+          monthCounts.set(key,(monthCounts.get(key)||0)+1);
+        }
+        const monthEntries=Array.from(monthCounts.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+        const trendLabels=monthEntries.map(([key])=>{
+          const date=isoToDate(`${key}-01`);
+          return date?date.toLocaleDateString(ANALYSIS_LOCALE,{month:'short',year:'numeric'}):key;
+        });
+        const trendValues=monthEntries.map(([,value])=>value);
+        const trendCtx=document.getElementById('analysisTrendChart').getContext('2d');
+        if(trendChart){
+          trendChart.data.labels=trendLabels;
+          trendChart.data.datasets[0].data=trendValues;
+          trendChart.update();
+        }else{
+          trendChart=new Chart(trendCtx,{type:'line',data:{labels:trendLabels,datasets:[{label:'Controles',data:trendValues,borderColor:'rgba(215,0,44,.85)',backgroundColor:'rgba(215,0,44,.2)',tension:.3,fill:false,pointRadius:4}]},options:{plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+        }
+        if(trendLabels.length){
+          trendNote.textContent=`Periode: ${trendLabels[0]} – ${trendLabels[trendLabels.length-1]}`;
+        }else{
+          trendNote.textContent='Geen maandgegevens beschikbaar.';
+        }
+
+        const workerEntries=Array.from(workerCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,5);
+        const workerLabels=workerEntries.map(([key])=>key);
+        const workerValues=workerEntries.map(([,value])=>value);
+        const workerCtx=document.getElementById('analysisWorkerChart').getContext('2d');
+        if(workerChart){
+          workerChart.data.labels=workerLabels;
+          workerChart.data.datasets[0].data=workerValues;
+          workerChart.update();
+        }else{
+          workerChart=new Chart(workerCtx,{type:'bar',data:{labels:workerLabels,datasets:[{label:'Controles',data:workerValues,backgroundColor:'rgba(15,23,42,.7)'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+        }
+        workerNote.textContent=`Top ${workerLabels.length} van ${workerCounts.size} werknemers.`;
+      }catch(e){
+        console.error('renderAnalysisSupabase', e);
+        $('#analysisStatusNote').textContent=`Fout bij laden: ${e.message||e}`;
+        $('#analysisTrendNote').textContent='—';
+        $('#analysisWorkerNote').textContent='—';
+      }finally{
+        analysisLoading=false;
+      }
+    }
+
     async function viewSupabasePhotos(recordId, triggerEl){
       if(!recordId) return;
       const btn=triggerEl;
@@ -636,6 +857,8 @@
     $('#viewerPrev').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex-1+viewerPhotos.length)%viewerPhotos.length; updateViewer(); }});
     $('#viewerNext').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex+1)%viewerPhotos.length; updateViewer(); }});
     document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#photoViewer').hidden){ closeViewer(); } });
+
+    activateTab('form');
 
     // ===== Self-test (light) =====
     (function(){ const t=$('#thumbs'); const prev=t.children.length; renderThumb('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMAAQAABQABe9L2WQAAAABJRU5ErkJggg=='); console.log('Selftest renderThumb:', t.children.length===prev+1); t.firstChild?.remove(); })();
