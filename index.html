@@ -179,7 +179,8 @@
     .metric-sub{font-size:.85rem;color:var(--muted);}
     .chart-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));}
     .chart-card{display:flex;flex-direction:column;gap:14px;}
-    .chart-card canvas{max-width:100%;}
+    .chart-canvas{position:relative;width:100%;height:clamp(220px,32vh,360px);}
+    .chart-canvas canvas{position:absolute;inset:0;width:100%!important;height:100%!important;max-width:100%;}
     .chart-note{color:var(--muted);font-size:.85rem;}
     .thumbs{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
     .thumbs img{width:130px;height:96px;object-fit:cover;border-radius:18px;border:1px solid rgba(255,255,255,.7);background:#f3f4f6;box-shadow:0 18px 32px -26px rgba(15,23,42,.4);cursor:pointer;transition:transform .2s ease}
@@ -354,17 +355,23 @@
       <div class="grid chart-grid">
         <div class="card chart-card">
           <h3 style="margin:0">Verdeling status</h3>
-          <canvas id="analysisStatusChart" height="220" aria-label="Status verdeling" role="img"></canvas>
+          <div class="chart-canvas">
+            <canvas id="analysisStatusChart" height="220" aria-label="Status verdeling" role="img"></canvas>
+          </div>
           <p class="chart-note" id="analysisStatusNote">—</p>
         </div>
         <div class="card chart-card">
           <h3 style="margin:0">Trendlijn per maand</h3>
-          <canvas id="analysisTrendChart" height="220" aria-label="Trendlijn per maand" role="img"></canvas>
+          <div class="chart-canvas">
+            <canvas id="analysisTrendChart" height="220" aria-label="Trendlijn per maand" role="img"></canvas>
+          </div>
           <p class="chart-note" id="analysisTrendNote">—</p>
         </div>
         <div class="card chart-card">
           <h3 style="margin:0">Top werknemers</h3>
-          <canvas id="analysisWorkerChart" height="220" aria-label="Top werknemers" role="img"></canvas>
+          <div class="chart-canvas">
+            <canvas id="analysisWorkerChart" height="220" aria-label="Top werknemers" role="img"></canvas>
+          </div>
           <p class="chart-note" id="analysisWorkerNote">—</p>
         </div>
       </div>
