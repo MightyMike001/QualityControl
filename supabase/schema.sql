@@ -72,16 +72,52 @@ $$;
 alter table public.qc_record enable row level security;
 alter table public.qc_photo enable row level security;
 
-create policy if not exists "Allow anon read qc_record" on public.qc_record
-  for select using (true);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'qc_record'
+      and policyname = 'Allow anon read qc_record'
+  ) then
+    create policy "Allow anon read qc_record" on public.qc_record
+      for select using (true);
+  end if;
 
-create policy if not exists "Allow anon insert qc_record" on public.qc_record
-  for insert with check (true);
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'qc_record'
+      and policyname = 'Allow anon insert qc_record'
+  ) then
+    create policy "Allow anon insert qc_record" on public.qc_record
+      for insert with check (true);
+  end if;
 
-create policy if not exists "Allow anon read qc_photo" on public.qc_photo
-  for select using (true);
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'qc_photo'
+      and policyname = 'Allow anon read qc_photo'
+  ) then
+    create policy "Allow anon read qc_photo" on public.qc_photo
+      for select using (true);
+  end if;
 
-create policy if not exists "Allow anon insert qc_photo" on public.qc_photo
-  for insert with check (true);
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'qc_photo'
+      and policyname = 'Allow anon insert qc_photo'
+  ) then
+    create policy "Allow anon insert qc_photo" on public.qc_photo
+      for insert with check (true);
+  end if;
+end;
+$$;
 
 -- Opmerking: maak een storage bucket 'qc-photos' en sta public read toe via policies.
