@@ -380,13 +380,15 @@
       const originalText=btn?.textContent;
       if(btn){ btn.disabled=true; btn.textContent='Laden...'; }
       try{
-        const { data, error } = await supa.from('qc_photo').select('path').eq('record_id', recordId);
+        const { data, error } = await supa.from('qc_photo').select('storage_path').eq('record_id', recordId);
         if(error) throw error;
         if(!data?.length){ alert('Geen foto\'s gevonden.'); return; }
         const bucket=supa.storage.from(STORAGE_BUCKET);
         const urls=[];
         for(const row of data){
-          const { data: signed, error: signedErr } = await bucket.createSignedUrl(row.path, 300);
+          const storagePath=row?.storage_path;
+          if(!storagePath) continue;
+          const { data: signed, error: signedErr } = await bucket.createSignedUrl(storagePath, 300);
           if(signedErr) throw signedErr;
           if(signed?.signedUrl) urls.push(signed.signedUrl);
         }
