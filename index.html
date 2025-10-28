@@ -176,7 +176,8 @@
     // ===== Config =====
     const SUPABASE_URL = 'https://kyzpxfkzugxlqfxhadhr.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5enB4Zmt6dWd4bHFmeGhhZGhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzk2MDYsImV4cCI6MjA3NzIxNTYwNn0.Qw7JpA_v8vbC4R2qLX1xkzp2qo1LlAc0sz-s5NdsU5Y';
-    const STORAGE_BUCKET = 'qc-photos';
+    const STORAGE_BUCKET_CANDIDATES = ['qc-photos', 'qc_photos'];
+    let resolvedBucketName = null;
     const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const globalCrypto = globalThis.crypto || globalThis.msCrypto || null;
     function safeUUID(){
@@ -269,16 +270,70 @@
     $('#photos').addEventListener('change', async (e)=>{ const prev=$('#thumbs'); prev.innerHTML=''; camShots.forEach(renderThumb); const files=Array.from(e.target.files||[]).slice(0,12); for(const f of files){ const d=await toDataUrl(f); renderThumb(d); } });
 
     // ===== Save (Supabase) =====
+    function bucketNotFound(err){ return typeof err?.message==='string' && err.message.toLowerCase().includes('bucket') && err.message.toLowerCase().includes('not found'); }
+    function objectNotFound(err){ return typeof err?.message==='string' && err.message.toLowerCase().includes('object') && err.message.toLowerCase().includes('not found'); }
+    function bucketCandidates(){ if(resolvedBucketName){ return [resolvedBucketName, ...STORAGE_BUCKET_CANDIDATES.filter(n=>n!==resolvedBucketName)]; } return STORAGE_BUCKET_CANDIDATES.slice(); }
+    async function uploadPhotosToBucket(bucketName, folder, files, shots){
+      const bucket=supa.storage.from(bucketName);
+      const uploaded=[];
+      try{
+        for(const f of files){
+          const ext=(f.type||'image/jpeg').split('/')[1]||'jpg';
+          const path=`${folder}/${safeUUID()}.${ext}`;
+          const {error}=await bucket.upload(path,f,{upsert:false,contentType:f.type||'image/jpeg'});
+          if(error) throw error;
+          uploaded.push(path);
+        }
+        for(const d of shots){
+          const blob=dataUrlToBlob(d);
+          const path=`${folder}/${safeUUID()}.jpg`;
+          const {error}=await bucket.upload(path,blob,{upsert:false,contentType:'image/jpeg'});
+          if(error) throw error;
+          uploaded.push(path);
+        }
+        return uploaded;
+      }catch(err){
+        if(uploaded.length && !bucketNotFound(err)){
+          try{ await bucket.remove(uploaded); }catch(_e){ /* noop cleanup failure */ }
+        }
+        throw err;
+      }
+    }
+    async function uploadPhotosWithFallback(folder, files, shots){
+      if(!files.length && !shots.length) return [];
+      let lastBucketError=null;
+      for(const name of bucketCandidates()){
+        try{
+          const paths=await uploadPhotosToBucket(name, folder, files, shots);
+          resolvedBucketName=name;
+          return paths;
+        }catch(err){
+          if(bucketNotFound(err)){ lastBucketError=err; continue; }
+          throw err;
+        }
+      }
+      throw new Error('Supabase opslagbucket niet gevonden (qc-photos/qc_photos).');
+    }
+    async function createSignedUrlWithFallback(storagePath){
+      let lastErr=null;
+      for(const name of bucketCandidates()){
+        const bucket=supa.storage.from(name);
+        const {data, error}=await bucket.createSignedUrl(storagePath,300);
+        if(!error && data?.signedUrl){ resolvedBucketName=name; return data.signedUrl; }
+        if(error && (bucketNotFound(error)||objectNotFound(error))){ lastErr=error; continue; }
+        if(error) throw error;
+      }
+      if(lastErr) throw lastErr;
+      return null;
+    }
+
     $('#save').addEventListener('click', async ()=>{
       const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
       try{
         // upload naar Storage
-        const folder=`records/${safeUUID()}`; const photoPaths=[];
-        const bucket = supa.storage.from(STORAGE_BUCKET);
-        // input-bestanden
-        for(const f of Array.from($('#photos').files||[])){ const ext=(f.type||'image/jpeg').split('/')[1]||'jpg'; const path=`${folder}/${safeUUID()}.${ext}`; const {error:upErr}=await bucket.upload(path,f,{upsert:false,contentType:f.type||'image/jpeg'}); if(upErr) throw upErr; photoPaths.push(path); }
-        // camera-opnames
-        for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${safeUUID()}.jpg`; const {error:upErr2}=await bucket.upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
+        const folder=`records/${safeUUID()}`;
+        const files=Array.from($('#photos').files||[]);
+        const photoPaths=await uploadPhotosWithFallback(folder, files, camShots);
         // atomic insert
         const rpcPhotoPaths = photoPaths.length ? photoPaths : [];
         const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:rpcPhotoPaths });
@@ -425,14 +480,12 @@
         const { data, error } = await supa.from('qc_photo').select('storage_path').eq('record_id', recordId);
         if(error) throw error;
         if(!data?.length){ alert('Geen foto\'s gevonden.'); return; }
-        const bucket=supa.storage.from(STORAGE_BUCKET);
         const urls=[];
         for(const row of data){
           const storagePath=row?.storage_path;
           if(!storagePath) continue;
-          const { data: signed, error: signedErr } = await bucket.createSignedUrl(storagePath, 300);
-          if(signedErr) throw signedErr;
-          if(signed?.signedUrl) urls.push(signed.signedUrl);
+          const signedUrl=await createSignedUrlWithFallback(storagePath);
+          if(signedUrl) urls.push(signedUrl);
         }
         if(!urls.length){ alert('Geen foto\'s beschikbaar.'); return; }
         openViewer(urls);
