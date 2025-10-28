@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QC – Simple (Supabase, Light)</title>
+  <style>
+    :root{
+      --bg:#f9fafb; --card:#ffffff; --text:#111827; --muted:#4b5563; --border:#d1d5db;
+      --accent:#a00020; --ok:#16a34a; --nok:#dc2626; --rework:#eab308;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto}
+    .app{max-width:980px;margin:0 auto;padding:16px}
+    .title{margin:0 0 6px;color:var(--accent)}
+    .mini{color:var(--muted);font-size:.85rem}
+    .tabs{display:flex;gap:8px;margin:10px 0 12px}
+    .tab{border:1px solid var(--border);background:var(--card);padding:8px 12px;border-radius:8px;cursor:pointer;transition:background .2s}
+    .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+    label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}
+    input,select,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text)}
+    textarea{min-height:80px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row>.col{flex:1 1 220px}
+    .btn{appearance:none;border:1px solid var(--border);background:#fff;color:var(--text);padding:10px 14px;border-radius:8px;cursor:pointer;transition:background .2s}
+    .btn:hover{background:#f3f4f6}
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+    .btn.warn{background:var(--nok);color:#fff;border-color:var(--nok)}
+    .tab:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+    @media (prefers-reduced-motion: reduce){.tab,.btn{transition:none}}
+    .grid{display:grid;gap:10px}
+    .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .thumbs img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:#f3f4f6}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-top:1px solid var(--border);padding:8px;vertical-align:top}
+    th{color:var(--muted);text-align:left;background:#f3f4f6}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border)}
+    .b-ok{background:rgba(22,163,74,.1)}
+    .b-nok{background:rgba(220,38,38,.1)}
+    .b-rw{background:rgba(234,179,8,.1)}
+    video#cam{width:100%;max-height:320px;border-radius:10px;border:1px solid var(--border);display:none;background:#000}
+    canvas#snap{display:none}
+    .thumb{position:relative}
+    .thumb button.del{position:absolute;top:4px;right:4px;border:1px solid var(--border);background:#fff;color:var(--nok);border-radius:8px;padding:2px 6px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1 class="title">Quality Control – Supabase</h1>
+    <div class="mini">Supabase-communicatie actief. Foto's → Storage, records → Postgres. Valt terug op localStorage bij fout.</div>
+
+    <div class="tabs" role="tablist" aria-label="QC tabs">
+      <button class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
+      <button class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button id="exportCsv" class="btn" type="button">Exporteer CSV (lokaal)</button>
+        <button id="clearAll" class="btn warn" type="button">Leeg lokaal</button>
+      </div>
+    </div>
+
+    <!-- FORM -->
+    <section id="form" class="card grid" role="tabpanel" aria-labelledby="form-tab">
+      <div class="row">
+        <div class="col">
+          <label for="serial">Serienummer</label>
+          <input id="serial" placeholder="Bijv. E16-01 / SN12345" />
+        </div>
+        <div class="col">
+          <label for="initials">Initialen werknemer</label>
+          <input id="initials" placeholder="Bijv. MG" />
+        </div>
+        <div class="col">
+          <label for="date">Datum</label>
+          <input id="date" type="date" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label for="status">Status</label>
+          <select id="status">
+            <option value="GOEDGEKEURD">Goedgekeurd</option>
+            <option value="AFGEKEURD">Afgekeurd</option>
+            <option value="GOED NA AFKEUR">Goed na afkeur</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="desc">Beschrijving</label>
+        <textarea id="desc" placeholder="Korte toelichting"></textarea>
+      </div>
+
+      <div>
+        <label for="photos">Foto's</label>
+        <div class="row" style="align-items:center">
+          <div class="col" style="flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap">
+            <button id="openCam" class="btn" type="button">Camera openen</button>
+            <button id="takeShot" class="btn ok" type="button" disabled>Foto nemen</button>
+            <button id="flipCam" class="btn" type="button" disabled>Wissel camera</button>
+            <button id="closeCam" class="btn" type="button" disabled>Sluit camera</button>
+          </div>
+          <div class="col">
+            <input id="photos" type="file" accept="image/*" capture="environment" multiple />
+          </div>
+        </div>
+        <video id="cam" autoplay playsinline muted></video>
+        <canvas id="snap"></canvas>
+        <div id="thumbs" class="thumbs" data-testid="thumbs"></div>
+      </div>
+
+      <div class="row" style="align-items:center">
+        <button class="btn primary" id="save" type="button">Opslaan</button>
+        <button class="btn" id="resetForm" type="button">Formulier leeg</button>
+        <div id="saveNote" class="mini" aria-live="polite"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Laatste registraties (lokaal)</h3>
+        <table id="recent">
+          <thead>
+            <tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Foto's</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="card grid" style="display:none" role="tabpanel" aria-labelledby="dashboard-tab">
+      <div class="row">
+        <div class="col"><label for="filterFrom">Vanaf</label><input id="filterFrom" type="date" /></div>
+        <div class="col"><label for="filterTo">Tot en met</label><input id="filterTo" type="date" /></div>
+        <div class="col"><label for="filterInitials">Initialen (optioneel)</label><input id="filterInitials" placeholder="Bijv. MG" /></div>
+        <div class="col" style="align-self:end"><button id="applyFilters" class="btn" type="button">Toepassen</button></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3 style="margin:0 0 6px">Totaal per werknemer (Supabase)</h3>
+          <table id="byWorker"><thead><tr><th>Initialen</th><th>Totaal</th><th>OK</th><th>NOK</th><th>Rework</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 6px">Details (Supabase)</h3>
+          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Beschrijving</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script>
+    // ===== Config =====
+    const SUPABASE_URL = 'https://kyzpxfkzugxlqfxhadhr.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5enB4Zmt6dWd4bHFmeGhhZGhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzk2MDYsImV4cCI6MjA3NzIxNTYwNn0.Qw7JpA_v8vbC4R2qLX1xkzp2qo1LlAc0sz-s5NdsU5Y';
+    const STORAGE_BUCKET = 'qc-photos';
+    const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ===== Helpers (local) =====
+    const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
+    const LS_KEY = 'qcsimple:records';
+    const today = () => new Date().toISOString().slice(0,10);
+    const loadAll = () => { try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]')}catch{return []} };
+    const saveAll = arr => localStorage.setItem(LS_KEY, JSON.stringify(arr));
+    const toDataUrl = file => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});
+    function dataUrlToBlob(dataUrl){ const [meta,b64]=dataUrl.split(','); const mime=(meta.match(/:(.*?);/)||[])[1]||'image/jpeg'; const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:mime}); }
+
+    // ===== Camera =====
+    let camStream=null, camFacing='environment', camShots=[];
+    async function openCamera(){
+      try{ camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:camFacing}});
+           const v=$('#cam'); v.srcObject=camStream; v.style.display='block';
+           $('#takeShot').disabled=$('#flipCam').disabled=$('#closeCam').disabled=false; }
+      catch{ alert('Camera niet beschikbaar/toestemming geweigerd. Gebruik bestandsupload.'); }
+    }
+    function stopCamera(){ const v=$('#cam'); if(camStream){camStream.getTracks().forEach(t=>t.stop()); camStream=null;} v.srcObject=null; v.style.display='none'; $('#takeShot').disabled=$('#flipCam').disabled=$('#closeCam').disabled=true; }
+    function capturePhoto(){ const v=$('#cam'); if(!v.videoWidth) return; const c=$('#snap'); c.width=v.videoWidth; c.height=v.videoHeight; const ctx=c.getContext('2d'); ctx.drawImage(v,0,0,c.width,c.height); const ts=new Date().toISOString().replace('T',' ').slice(0,19); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(10,c.height-34,200,24); ctx.fillStyle='#fff'; ctx.font='16px system-ui'; ctx.fillText(ts,16,c.height-18); const d=c.toDataURL('image/jpeg',0.85); camShots.unshift(d); renderThumb(d); }
+    function renderThumb(data){ const wrap=document.createElement('div'); wrap.className='thumb'; const img=new Image(); img.src=data; img.loading='lazy'; const del=document.createElement('button'); del.className='del'; del.textContent='✕'; del.addEventListener('click',()=>{wrap.remove(); camShots=camShots.filter(d=>d!==data)}); wrap.appendChild(img); wrap.appendChild(del); $('#thumbs').prepend(wrap); }
+
+    // ===== Tabs =====
+    $$('.tab').forEach(btn=>btn.addEventListener('click',()=>{ $$('.tab').forEach(b=>{b.classList.remove('active'); b.setAttribute('aria-selected','false')}); btn.classList.add('active'); btn.setAttribute('aria-selected','true'); const tab=btn.dataset.tab; $('#form').style.display=tab==='form'?'block':'none'; $('#dashboard').style.display=tab==='dashboard'?'block':'none'; if(tab==='dashboard'){ stopCamera(); renderDashboardSupabase(); }}));
+
+    // ===== Init =====
+    $('#date').value=today();
+    $('#photos').addEventListener('change', async (e)=>{ const prev=$('#thumbs'); prev.innerHTML=''; camShots.forEach(renderThumb); const files=Array.from(e.target.files||[]).slice(0,12); for(const f of files){ const d=await toDataUrl(f); renderThumb(d); } });
+
+    // ===== Save (Supabase + fallback local) =====
+    $('#save').addEventListener('click', async ()=>{
+      const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
+      try{
+        // upload naar Storage
+        const folder=`records/${crypto.randomUUID()}`; const photoPaths=[];
+        // input-bestanden
+        for(const f of Array.from($('#photos').files||[])){ const ext=(f.type||'image/jpeg').split('/')[1]||'jpg'; const path=`${folder}/${crypto.randomUUID()}.${ext}`; const {error:upErr}=await supa.storage.from('qc-photos').upload(path,f,{upsert:false,contentType:f.type||'image/jpeg'}); if(upErr) throw upErr; photoPaths.push(path); }
+        // camera-opnames
+        for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${crypto.randomUUID()}.jpg`; const {error:upErr2}=await supa.storage.from('qc-photos').upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
+        // atomic insert
+        const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:photoPaths });
+        if(error) throw error; $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
+      }catch(e){ console.warn('Supabase save failed, fallback local', e); const files=Array.from($('#photos').files||[]); const photos=[...camShots]; for(const f of files){ const d=await toDataUrl(f); photos.push(d); } const rec={id:crypto.randomUUID(),date,initials,serial,status,desc,photos,ts:Date.now()}; const all=loadAll(); all.unshift(rec); saveAll(all); $('#saveNote').textContent='Opgeslagen (lokaal)'; }
+      renderRecent(); resetForm(false); stopCamera();
+    });
+
+    function resetForm(clearDate=true){ $('#serial').value=''; $('#initials').value=''; $('#status').value='GOEDGEKEURD'; $('#desc').value=''; $('#photos').value=''; $('#thumbs').innerHTML=''; camShots=[]; if(clearDate) $('#date').value=today(); setTimeout(()=>$('#saveNote').textContent='',2000); }
+    $('#resetForm').addEventListener('click',()=>resetForm());
+
+    function renderRecent(){ const tbody=$('#recent tbody'); if(!tbody) return; tbody.innerHTML=''; const all=loadAll().slice(0,10); for(const r of all){ const tr=document.createElement('tr'); const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>'); const photoCnt=r.photos?.length||0; tr.innerHTML=`<td>${r.date}</td><td>${r.initials}</td><td>${r.serial}</td><td>${badge}</td><td>${photoCnt}</td>`; tbody.appendChild(tr); } }
+    renderRecent();
+
+    // CSV export / clear local
+    $('#exportCsv').addEventListener('click',()=>{ const all=loadAll(); const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"'; const headers=['id','date','initials','serial','status','desc','photo_count']; const rows=all.map(r=>({id:r.id,date:r.date,initials:r.initials,serial:r.serial,status:r.status,desc:r.desc,photo_count:(r.photos?.length||0)})); const csv=[headers.map(esc).join(','),...rows.map(o=>headers.map(h=>esc(o[h])).join(','))].join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`qc_simple_${today()}.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); });
+    $('#clearAll').addEventListener('click',()=>{ if(confirm('Alles verwijderen (lokaal)?')){ localStorage.removeItem(LS_KEY); renderRecent(); }});
+
+    // ===== Dashboard (Supabase) =====
+    async function renderDashboardSupabase(){
+      const from=$('#filterFrom').value||null; const to=$('#filterTo').value||null; const who=$('#filterInitials').value.trim().toUpperCase();
+      const byWorkerTbody=$('#byWorker tbody'); const detailTbody=$('#detail tbody'); byWorkerTbody.innerHTML=''; detailTbody.innerHTML='';
+      // worker stats view
+      let { data: stats, error: statsErr } = await supa.from('v_qc_worker_stats').select('*');
+      if(statsErr){ byWorkerTbody.innerHTML=`<tr><td colspan="5">Fout: ${statsErr.message}</td></tr>`; } else { if(who) stats=stats.filter(r=>r.worker_initials===who); const rows=(stats||[]).sort((a,b)=>a.worker_initials.localeCompare(b.worker_initials)).map(r=>`<tr><td><strong>${r.worker_initials}</strong></td><td>${r.total}</td><td>${r.ok}</td><td>${r.nok}</td><td>${r.rework}</td></tr>`).join(''); byWorkerTbody.innerHTML=rows||'<tr><td colspan="5">Geen data</td></tr>'; }
+      // details
+      let q=supa.from('qc_record').select('qc_date,worker_initials,serial,status,description').order('qc_date',{ascending:false}).limit(500);
+      if(from) q=q.gte('qc_date',from); if(to) q=q.lte('qc_date',to); if(who) q=q.eq('worker_initials',who);
+      const { data: details, error: detErr } = await q;
+      if(detErr){ detailTbody.innerHTML=`<tr><td colspan="5">Fout: ${detErr.message}</td></tr>`; }
+      else{ const rows=(details||[]).map(r=>{ const badge=r.status==='GOEDGEKEURD'?'<span class="badge b-ok">OK</span>':(r.status==='AFGEKEURD'?'<span class="badge b-nok">NOK</span>':'<span class="badge b-rw">GOED\u00A0NA\u00A0AFKEUR</span>'); return `<tr><td>${r.qc_date}</td><td>${r.worker_initials}</td><td>${r.serial}</td><td>${badge}</td><td>${r.description||''}</td></tr>`; }).join(''); detailTbody.innerHTML=rows||'<tr><td colspan="5">Geen details</td></tr>'; }
+    }
+    $('#applyFilters').addEventListener('click', renderDashboardSupabase);
+
+    // ===== Wire camera buttons =====
+    $('#openCam').addEventListener('click', openCamera);
+    $('#takeShot').addEventListener('click', capturePhoto);
+    $('#flipCam').addEventListener('click', async ()=>{ camFacing=(camFacing==='environment')?'user':'environment'; stopCamera(); await openCamera(); });
+    $('#closeCam').addEventListener('click', stopCamera);
+
+    // ===== Self-test (light) =====
+    (function(){ const t=$('#thumbs'); const prev=t.children.length; renderThumb('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMAAQAABQABe9L2WQAAAABJRU5ErkJggg=='); console.log('Selftest renderThumb:', t.children.length===prev+1); t.firstChild?.remove(); })();
+  </script>
+</body>
+</html>
