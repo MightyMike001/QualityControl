@@ -156,6 +156,19 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5enB4Zmt6dWd4bHFmeGhhZGhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzk2MDYsImV4cCI6MjA3NzIxNTYwNn0.Qw7JpA_v8vbC4R2qLX1xkzp2qo1LlAc0sz-s5NdsU5Y';
     const STORAGE_BUCKET = 'qc-photos';
     const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const globalCrypto = globalThis.crypto || globalThis.msCrypto || null;
+    function safeUUID(){
+      if(globalCrypto?.randomUUID) return globalCrypto.randomUUID();
+      if(globalCrypto?.getRandomValues){
+        const bytes=new Uint8Array(16);
+        globalCrypto.getRandomValues(bytes);
+        bytes[6]=(bytes[6]&0x0f)|0x40;
+        bytes[8]=(bytes[8]&0x3f)|0x80;
+        const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0'));
+        return `${hex.slice(0,4).join('')}-${hex.slice(4,6).join('')}-${hex.slice(6,8).join('')}-${hex.slice(8,10).join('')}-${hex.slice(10).join('')}`;
+      }
+      return `id-${Date.now().toString(16)}-${Math.random().toString(16).slice(2,10)}`;
+    }
 
     // ===== Helpers (local) =====
     const $ = s => document.querySelector(s); const $$ = s => Array.from(document.querySelectorAll(s));
@@ -190,15 +203,16 @@
       const serial=$('#serial').value.trim(); const initials=$('#initials').value.trim().toUpperCase(); const date=$('#date').value||today(); const status=$('#status').value; const desc=$('#desc').value.trim(); if(!serial||!initials){ alert('Vul serienummer en initialen in.'); return; }
       try{
         // upload naar Storage
-        const folder=`records/${crypto.randomUUID()}`; const photoPaths=[];
+        const folder=`records/${safeUUID()}`; const photoPaths=[];
+        const bucket = supa.storage.from(STORAGE_BUCKET);
         // input-bestanden
-        for(const f of Array.from($('#photos').files||[])){ const ext=(f.type||'image/jpeg').split('/')[1]||'jpg'; const path=`${folder}/${crypto.randomUUID()}.${ext}`; const {error:upErr}=await supa.storage.from('qc-photos').upload(path,f,{upsert:false,contentType:f.type||'image/jpeg'}); if(upErr) throw upErr; photoPaths.push(path); }
+        for(const f of Array.from($('#photos').files||[])){ const ext=(f.type||'image/jpeg').split('/')[1]||'jpg'; const path=`${folder}/${safeUUID()}.${ext}`; const {error:upErr}=await bucket.upload(path,f,{upsert:false,contentType:f.type||'image/jpeg'}); if(upErr) throw upErr; photoPaths.push(path); }
         // camera-opnames
-        for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${crypto.randomUUID()}.jpg`; const {error:upErr2}=await supa.storage.from('qc-photos').upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
+        for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${safeUUID()}.jpg`; const {error:upErr2}=await bucket.upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
         // atomic insert
         const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:photoPaths });
         if(error) throw error; $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
-      }catch(e){ console.warn('Supabase save failed, fallback local', e); const files=Array.from($('#photos').files||[]); const photos=[...camShots]; for(const f of files){ const d=await toDataUrl(f); photos.push(d); } const rec={id:crypto.randomUUID(),date,initials,serial,status,desc,photos,ts:Date.now()}; const all=loadAll(); all.unshift(rec); saveAll(all); $('#saveNote').textContent='Opgeslagen (lokaal)'; }
+      }catch(e){ console.warn('Supabase save failed, fallback local', e); const files=Array.from($('#photos').files||[]); const photos=[...camShots]; for(const f of files){ const d=await toDataUrl(f); photos.push(d); } const rec={id:safeUUID(),date,initials,serial,status,desc,photos,ts:Date.now()}; const all=loadAll(); all.unshift(rec); saveAll(all); $('#saveNote').textContent='Opgeslagen (lokaal)'; }
       renderRecent(); resetForm(false); stopCamera();
     });
 
