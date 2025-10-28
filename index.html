@@ -280,7 +280,8 @@
         // camera-opnames
         for(const d of camShots){ const blob=dataUrlToBlob(d); const path=`${folder}/${safeUUID()}.jpg`; const {error:upErr2}=await bucket.upload(path,blob,{upsert:false,contentType:'image/jpeg'}); if(upErr2) throw upErr2; photoPaths.push(path); }
         // atomic insert
-        const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:photoPaths });
+        const rpcPhotoPaths = photoPaths.length ? photoPaths : null;
+        const { data: insertedId, error } = await supa.rpc('qc_insert_record_with_photos', { p_serial:serial, p_worker_initials:initials, p_status:status, p_description:desc||null, p_qc_date:date, p_photo_paths:rpcPhotoPaths });
         if(error) throw error;
         $('#saveNote').textContent=`Opgeslagen in Supabase (id: ${insertedId})`;
         await renderRecent();
