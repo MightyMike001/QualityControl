@@ -6,69 +6,304 @@
   <title>QC – Simple (Supabase, Light)</title>
   <style>
     :root{
-      --bg:#f9fafb; --card:#ffffff; --text:#111827; --muted:#4b5563; --border:#d1d5db;
-      --accent:#a00020; --ok:#16a34a; --nok:#dc2626; --rework:#eab308;
+      --bg-outer:#101726;
+      --bg-inner:#1f2937;
+      --glass:#ffffffb8;
+      --glass-border:#ffffff80;
+      --card:#fdfdffbf;
+      --card-border:#ffffff70;
+      --text:#0f172a;
+      --muted:#5b6475;
+      --muted-strong:#273045;
+      --accent:#d7002c;
+      --accent-dark:#6b0014;
+      --accent-soft:rgba(215,0,44,.12);
+      --ok:#16a34a;
+      --nok:#dc2626;
+      --rework:#eab308;
     }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto}
-    .app{max-width:980px;margin:0 auto;padding:16px}
-    .title{margin:0 0 6px;color:var(--accent)}
-    .mini{color:var(--muted);font-size:.85rem}
-    .tabs{display:flex;gap:8px;margin:10px 0 12px}
-    .tab{border:1px solid var(--border);background:var(--card);padding:8px 12px;border-radius:8px;cursor:pointer;transition:background .2s}
-    .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-    label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px}
-    input,select,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text)}
-    textarea{min-height:80px}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
-    .row>.col{flex:1 1 220px}
-    .btn{appearance:none;border:1px solid var(--border);background:#fff;color:var(--text);padding:10px 14px;border-radius:8px;cursor:pointer;transition:background .2s}
-    .btn:hover{background:#f3f4f6}
-    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-    .btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
-    .btn.warn{background:var(--nok);color:#fff;border-color:var(--nok)}
-    .btn.link{border:none;background:none;color:var(--accent);padding:0;font-weight:600}
-    .btn.link:hover{text-decoration:underline;background:none}
-    .tab:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-    @media (prefers-reduced-motion: reduce){.tab,.btn{transition:none}}
-    .grid{display:grid;gap:10px}
-    .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-    .thumbs img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:#f3f4f6}
-    table{width:100%;border-collapse:collapse}
-    th,td{border-top:1px solid var(--border);padding:8px;vertical-align:top}
-    th{color:var(--muted);text-align:left;background:#f3f4f6}
-    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;border:1px solid var(--border)}
-    .b-ok{background:rgba(22,163,74,.1)}
-    .b-nok{background:rgba(220,38,38,.1)}
-    .b-rw{background:rgba(234,179,8,.1)}
-    video#cam{width:100%;max-height:320px;border-radius:10px;border:1px solid var(--border);display:none;background:#000}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:stretch;
+      padding:32px;
+      font:15px/1.55 "SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      color:var(--text);
+      background:radial-gradient(circle at 20% 20%,rgba(215,0,44,.32),transparent 45%),radial-gradient(circle at 80% 0%,rgba(255,255,255,.22),transparent 40%),linear-gradient(160deg,var(--bg-outer),var(--bg-inner));
+    }
+    @media(max-width:720px){body{padding:16px;}}
+    .stage{width:min(1100px,100%);}
+    .phone-shell{
+      position:relative;
+      width:100%;
+      border-radius:42px;
+      padding:12px 12px 24px;
+      background:rgba(255,255,255,.08);
+      box-shadow:0 22px 55px -30px rgba(0,0,0,.65),0 12px 35px -20px rgba(215,0,44,.35);
+      border:1px solid rgba(255,255,255,.2);
+      backdrop-filter:blur(26px);
+    }
+    @media(max-width:900px){.phone-shell{border-radius:32px;padding:10px 10px 18px;}}
+    .status-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:6px 22px 0;
+      font-size:.7rem;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:rgba(255,255,255,.72);
+    }
+    .status-pill{
+      padding:4px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.22);
+      color:#fff;
+      font-weight:600;
+      letter-spacing:.08em;
+    }
+    .status-icons{display:flex;align-items:center;gap:6px;color:#fff;}
+    .status-dot{
+      width:8px;height:8px;
+      border-radius:999px;
+      background:rgba(255,255,255,.75);
+      position:relative;
+    }
+    .status-dot.wifi::after{
+      content:"";
+      position:absolute;
+      inset:-4px;
+      border-radius:999px;
+      border:2px solid rgba(255,255,255,.55);
+      border-bottom-color:transparent;
+      border-left-color:transparent;
+      transform:rotate(45deg);
+    }
+    .status-battery{
+      width:26px;
+      height:12px;
+      border-radius:4px;
+      border:1px solid rgba(255,255,255,.7);
+      position:relative;
+    }
+    .status-battery::after{
+      content:"";
+      position:absolute;
+      top:3px;right:-3px;
+      width:3px;height:6px;
+      border-radius:1px;
+      background:rgba(255,255,255,.7);
+    }
+    .battery-level{
+      position:absolute;
+      inset:2px;
+      border-radius:2px;
+      background:linear-gradient(90deg,var(--accent),rgba(255,255,255,.85));
+    }
+    .app{
+      padding:0 28px 32px;
+      display:flex;
+      flex-direction:column;
+      gap:24px;
+    }
+    @media(max-width:720px){.app{padding:0 18px 24px;gap:18px;}}
+    .hero{
+      position:relative;
+      border-radius:32px;
+      padding:34px;
+      overflow:hidden;
+      background:linear-gradient(140deg,var(--accent),var(--accent-dark));
+      color:#fff;
+      box-shadow:0 24px 40px -32px rgba(215,0,44,.9);
+      display:flex;
+      flex-wrap:wrap;
+      gap:18px;
+      align-items:flex-end;
+    }
+    .hero::after{
+      content:"";
+      position:absolute;
+      inset:-40% -20% auto;
+      height:120%;
+      background:radial-gradient(circle at 20% 20%,rgba(255,255,255,.28),transparent 55%);
+      opacity:.8;
+      pointer-events:none;
+    }
+    .hero>*{position:relative;z-index:1;}
+    .hero-label{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 14px;
+      border-radius:999px;
+      background:rgba(255,255,255,.2);
+      color:#fff;
+      font-size:.8rem;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+    .title{
+      margin:12px 0 8px;
+      font-size:2rem;
+      font-weight:700;
+      letter-spacing:-.01em;
+      color:#fff;
+    }
+    .mini{color:rgba(255,255,255,.78);font-size:.9rem;max-width:520px;}
+    .hero-actions{margin-left:auto;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+    .tabbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+    .tabs{
+      display:flex;
+      gap:8px;
+      padding:6px;
+      border-radius:22px;
+      background:rgba(255,255,255,.7);
+      border:1px solid rgba(255,255,255,.5);
+      box-shadow:0 12px 24px -18px rgba(15,23,42,.45);
+      backdrop-filter:blur(18px);
+    }
+    .tab{
+      border:none;
+      background:transparent;
+      padding:10px 20px;
+      border-radius:18px;
+      cursor:pointer;
+      font-weight:600;
+      letter-spacing:.01em;
+      color:var(--muted);
+      transition:background .25s ease,color .25s ease,transform .25s ease;
+    }
+    .tab:hover{color:var(--muted-strong);}
+    .tab.active{
+      background:#fff;
+      color:var(--accent);
+      box-shadow:0 16px 26px -20px rgba(215,0,44,.8);
+      transform:translateY(-1px);
+    }
+    section.card{
+      background:var(--card);
+      border:1px solid var(--card-border);
+      border-radius:28px;
+      padding:28px;
+      box-shadow:0 26px 48px -32px rgba(15,23,42,.38);
+      backdrop-filter:blur(18px);
+      display:grid;
+      gap:24px;
+    }
+    @media(max-width:720px){section.card{padding:20px;border-radius:22px;gap:18px;}}
+    .card{background:rgba(255,255,255,.82);border:1px solid rgba(255,255,255,.7);border-radius:22px;padding:20px;box-shadow:0 16px 32px -26px rgba(15,23,42,.28);backdrop-filter:blur(16px);}
+    .card h3{font-weight:600;color:var(--muted-strong);}
+    label{display:block;font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+    input,select,textarea{
+      width:100%;
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid transparent;
+      background:rgba(255,255,255,.9);
+      box-shadow:inset 0 0 0 1px rgba(15,23,42,.06);
+      color:var(--text);
+      font:inherit;
+      transition:box-shadow .25s ease,transform .25s ease;
+    }
+    input:focus-visible,select:focus-visible,textarea:focus-visible{
+      outline:none;
+      box-shadow:0 0 0 4px var(--accent-soft),inset 0 0 0 1px rgba(215,0,44,.45);
+      transform:translateY(-1px);
+    }
+    textarea{min-height:100px;resize:vertical;}
+    .row{display:flex;gap:16px;flex-wrap:wrap}
+    .row>.col{flex:1 1 240px;min-width:220px}
+    .btn{
+      appearance:none;
+      border:none;
+      padding:12px 18px;
+      border-radius:18px;
+      cursor:pointer;
+      font-weight:600;
+      letter-spacing:.01em;
+      background:rgba(255,255,255,.82);
+      color:var(--muted-strong);
+      box-shadow:0 18px 32px -24px rgba(15,23,42,.4);
+      transition:transform .2s ease,box-shadow .2s ease,background .2s ease;
+    }
+    .btn:hover{transform:translateY(-1px);box-shadow:0 18px 36px -20px rgba(15,23,42,.45);}
+    .btn:active{transform:translateY(0);box-shadow:0 12px 22px -16px rgba(15,23,42,.4);}
+    .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none;}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-dark));color:#fff;box-shadow:0 26px 40px -28px rgba(215,0,44,.75);}
+    .btn.ok{background:linear-gradient(135deg,var(--ok),#34d399);color:#fff;box-shadow:0 26px 40px -28px rgba(22,163,74,.65);}
+    .btn.warn{background:linear-gradient(135deg,var(--nok),#f87171);color:#fff;box-shadow:0 26px 40px -28px rgba(220,38,38,.6);}
+    .btn.ghost{background:rgba(255,255,255,.24);color:#fff;border:1px solid rgba(255,255,255,.45);box-shadow:none;}
+    .btn.link{border:none;background:none;color:var(--accent);padding:0;font-weight:600;box-shadow:none;}
+    .btn.link:hover{text-decoration:underline;background:none;transform:none;}
+    .tab:focus-visible,.btn:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px;}
+    @media (prefers-reduced-motion: reduce){.tab,.btn,input,select,textarea{transition:none}}
+    .grid{display:grid;gap:18px}
+    .thumbs{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+    .thumbs img{width:130px;height:96px;object-fit:cover;border-radius:18px;border:1px solid rgba(255,255,255,.7);background:#f3f4f6;box-shadow:0 18px 32px -26px rgba(15,23,42,.4);cursor:pointer;transition:transform .2s ease}
+    .thumbs img:hover{transform:translateY(-2px);}
+    table{width:100%;border-collapse:separate;border-spacing:0;min-width:520px;background:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.6);border-radius:18px;overflow:hidden;box-shadow:0 12px 24px -22px rgba(15,23,42,.32);}
+    th,td{padding:12px 14px;vertical-align:top;border-top:1px solid rgba(15,23,42,.06);font-size:.92rem;}
+    th{background:rgba(15,23,42,.04);color:var(--muted-strong);text-align:left;font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:.75rem;}
+    table tr:first-child th{border-top:none}
+    table tr:first-child td{border-top:none}
+    .table-scroll{overflow:auto;padding-bottom:4px;}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.78rem;font-weight:600;border:1px solid rgba(15,23,42,.08);background:rgba(15,23,42,.02);}
+    .b-ok{color:var(--ok);background:rgba(22,163,74,.12);}
+    .b-nok{color:var(--nok);background:rgba(220,38,38,.12);}
+    .b-rw{color:var(--rework);background:rgba(234,179,8,.14);}
+    video#cam{width:100%;max-height:320px;border-radius:24px;border:1px solid rgba(255,255,255,.6);display:none;background:#000;box-shadow:0 20px 36px -28px rgba(15,23,42,.55);}
     canvas#snap{display:none}
     .thumb{position:relative}
-    .thumb button.del{position:absolute;top:4px;right:4px;border:1px solid var(--border);background:#fff;color:var(--nok);border-radius:8px;padding:2px 6px;cursor:pointer}
-    .viewer{position:fixed;inset:0;background:rgba(17,24,39,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;backdrop-filter:blur(3px)}
+    .thumb button.del{position:absolute;top:8px;right:8px;border:1px solid rgba(255,255,255,.7);background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:4px 8px;cursor:pointer;box-shadow:0 12px 22px -16px rgba(0,0,0,.55);}
+    .viewer{position:fixed;inset:0;background:rgba(12,18,28,.82);display:flex;align-items:center;justify-content:center;padding:30px;z-index:9999;backdrop-filter:blur(10px)}
     .viewer[hidden]{display:none}
-    .viewer-inner{position:relative;background:#000;border-radius:12px;max-width:90vw;max-height:90vh;padding:12px;display:flex;flex-direction:column;gap:12px}
-    .viewer-inner img{max-width:80vw;max-height:70vh;object-fit:contain;border-radius:8px;background:#111}
-    .viewer-controls{display:flex;align-items:center;justify-content:center;gap:12px;color:#fff}
-    .viewer-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:999px;width:32px;height:32px;font-size:20px;cursor:pointer}
-    .viewer-close:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-    .viewer-nav{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .viewer-inner{position:relative;background:rgba(15,23,42,.9);border-radius:28px;max-width:90vw;max-height:90vh;padding:18px;display:flex;flex-direction:column;gap:18px;box-shadow:0 30px 60px -40px rgba(0,0,0,.8)}
+    .viewer-inner img{max-width:80vw;max-height:70vh;object-fit:contain;border-radius:18px;background:#111}
+    .viewer-controls{display:flex;align-items:center;justify-content:center;gap:18px;color:#fff;font-weight:600}
+    .viewer-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:999px;width:40px;height:40px;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 32px -24px rgba(0,0,0,.75)}
+    .viewer-close:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px}
+    .viewer-nav{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.3);padding:10px 18px;border-radius:999px;cursor:pointer;font-weight:600;}
     .viewer-nav[disabled]{opacity:.5;cursor:default}
+    @media(max-width:900px){table{min-width:0;font-size:.88rem;}th,td{white-space:nowrap;}}
+    @media(max-width:600px){
+      .row>.col{min-width:100%;}
+      table{display:block;overflow:auto;}
+    }
   </style>
 </head>
 <body>
-  <div class="app">
-    <h1 class="title">Quality Control – Supabase</h1>
-    <div class="mini">Supabase-communicatie actief. Foto's → Storage, records → Postgres.</div>
-
-    <div class="tabs" role="tablist" aria-label="QC tabs">
-      <button class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
-      <button class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
-      <div style="margin-left:auto;display:flex;gap:8px">
-        <button id="exportCsv" class="btn" type="button">Exporteer CSV (Supabase)</button>
+  <div class="stage">
+    <div class="phone-shell">
+      <div class="status-bar" aria-hidden="true">
+        <span>09:41</span>
+        <span class="status-pill">Motrac</span>
+        <span class="status-icons">
+          <span class="status-dot"></span>
+          <span class="status-dot wifi"></span>
+          <span class="status-battery"><span class="battery-level"></span></span>
+        </span>
       </div>
-    </div>
+      <div class="app">
+        <header class="hero">
+          <div>
+            <span class="hero-label">Motrac Quality</span>
+            <h1 class="title">Quality Control</h1>
+            <p class="mini">Supabase-communicatie actief. Foto's → Storage, records → Postgres.</p>
+          </div>
+          <div class="hero-actions">
+            <button id="exportCsv" class="btn ghost" type="button">Exporteer CSV (Supabase)</button>
+          </div>
+        </header>
+
+        <div class="tabbar">
+          <div class="tabs" role="tablist" aria-label="QC tabs">
+            <button class="tab active" data-tab="form" role="tab" aria-selected="true" aria-controls="form">Formulier</button>
+            <button class="tab" data-tab="dashboard" role="tab" aria-selected="false" aria-controls="dashboard">Dashboard</button>
+          </div>
+        </div>
 
     <!-- FORM -->
     <section id="form" class="card grid" role="tabpanel" aria-labelledby="form-tab">
@@ -132,12 +367,14 @@
 
       <div class="card">
         <h3 style="margin:0 0 6px">Laatste registraties (Supabase)</h3>
-        <table id="recent">
+        <div class="table-scroll">
+          <table id="recent">
           <thead>
             <tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Foto's</th></tr>
           </thead>
           <tbody></tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -152,14 +389,20 @@
       <div class="grid">
         <div class="card">
           <h3 style="margin:0 0 6px">Totaal per werknemer (Supabase)</h3>
-          <table id="byWorker"><thead><tr><th>Initialen</th><th>Totaal</th><th>OK</th><th>NOK</th><th>Rework</th></tr></thead><tbody></tbody></table>
+          <div class="table-scroll">
+            <table id="byWorker"><thead><tr><th>Initialen</th><th>Totaal</th><th>OK</th><th>NOK</th><th>Rework</th></tr></thead><tbody></tbody></table>
+          </div>
         </div>
         <div class="card">
           <h3 style="margin:0 0 6px">Details (Supabase)</h3>
-          <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Melding</th><th>Beschrijving</th><th>Foto's</th></tr></thead><tbody></tbody></table>
+          <div class="table-scroll">
+            <table id="detail"><thead><tr><th>Datum</th><th>Initialen</th><th>Serienr</th><th>Status</th><th>Melding</th><th>Beschrijving</th><th>Foto's</th></tr></thead><tbody></tbody></table>
+          </div>
         </div>
       </div>
     </section>
+      </div>
+    </div>
   </div>
 
   <div id="photoViewer" class="viewer" hidden aria-hidden="true">
