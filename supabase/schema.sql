@@ -144,7 +144,7 @@ insert into storage.buckets (id, name, public)
 values ('qc-photos', 'qc-photos', true)
 on conflict (id) do update set public = excluded.public;
 
-do $$
+do $do$
 begin
   begin
     execute 'alter table if exists storage.objects enable row level security';
@@ -161,9 +161,9 @@ begin
         and tablename = 'objects'
         and policyname = 'Allow anon read qc-photos'
     ) then
-      execute $$create policy "Allow anon read qc-photos" on storage.objects
+      execute $policy$create policy "Allow anon read qc-photos" on storage.objects
         for select
-        using (bucket_id = 'qc-photos')$$;
+        using (bucket_id = 'qc-photos')$policy$;
     end if;
   exception
     when insufficient_privilege then
@@ -178,14 +178,14 @@ begin
         and tablename = 'objects'
         and policyname = 'Allow anon insert qc-photos'
     ) then
-      execute $$create policy "Allow anon insert qc-photos" on storage.objects
+      execute $policy$create policy "Allow anon insert qc-photos" on storage.objects
         for insert
-        with check (bucket_id = 'qc-photos')$$;
+        with check (bucket_id = 'qc-photos')$policy$;
     end if;
   exception
     when insufficient_privilege then
       raise notice 'Skipping creation of insert policy on storage.objects due to insufficient privileges.';
   end;
 end;
-$$;
+$do$;
 
