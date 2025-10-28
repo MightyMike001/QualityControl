@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QC – Analyses</title>
+  <style>
+    :root{
+      --bg-outer:#0d1321;
+      --bg-inner:#111c32;
+      --glass:#ffffffcc;
+      --card:#ffffffde;
+      --card-border:#ffffff66;
+      --text:#0f172a;
+      --muted:#4b5563;
+      --accent:#d7002c;
+      --accent-soft:rgba(215,0,44,.12);
+      --ok:#16a34a;
+      --nok:#dc2626;
+      --rw:#eab308;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      padding:40px 24px 72px;
+      font:16px/1.6 "SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      color:var(--text);
+      background:radial-gradient(circle at 0% 30%,rgba(215,0,44,.24),transparent 55%),linear-gradient(160deg,var(--bg-outer),var(--bg-inner));
+    }
+    @media(max-width:720px){body{padding:24px 16px 48px;font-size:15px;}}
+    a{color:var(--accent);font-weight:600;text-decoration:none;}
+    a:hover{text-decoration:underline;}
+    .page{width:min(960px,100%);display:flex;flex-direction:column;gap:24px;}
+    header{
+      background:linear-gradient(135deg,var(--accent),#8c001c);
+      color:#fff;
+      border-radius:28px;
+      padding:32px;
+      box-shadow:0 26px 48px -32px rgba(215,0,44,.8);
+      position:relative;
+      overflow:hidden;
+    }
+    header::after{
+      content:"";
+      position:absolute;
+      inset:-30% 20% auto auto;
+      width:240px;
+      height:240px;
+      background:radial-gradient(circle,#ffffff70,transparent 65%);
+      opacity:.9;
+      pointer-events:none;
+    }
+    header>*{position:relative;z-index:1;}
+    h1{margin:0;font-size:2.3rem;letter-spacing:-.01em;}
+    .lead{margin:12px 0 0;color:rgba(255,255,255,.82);max-width:520px;}
+    .meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:24px;}
+    .meta-item{background:rgba(255,255,255,.24);border:1px solid rgba(255,255,255,.3);border-radius:18px;padding:10px 18px;font-size:.95rem;}
+    nav{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+    nav a.back{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.2);color:#fff;font-weight:600;box-shadow:0 18px 40px -28px rgba(15,23,42,.55);}
+    nav a.back:hover{transform:translateY(-1px);} 
+    section.card{
+      background:var(--card);
+      border:1px solid var(--card-border);
+      border-radius:24px;
+      padding:28px;
+      box-shadow:0 26px 45px -32px rgba(15,23,42,.35);
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+    section.card h2{margin:0;font-size:1.45rem;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;}
+    .stat{
+      border-radius:18px;
+      padding:18px;
+      background:linear-gradient(135deg,#fff,rgba(255,255,255,.75));
+      border:1px solid rgba(15,23,42,.06);
+      box-shadow:0 18px 32px -24px rgba(15,23,42,.35);
+    }
+    .stat strong{display:block;font-size:2rem;margin-bottom:8px;}
+    .pill-row{display:flex;flex-wrap:wrap;gap:12px;}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border-radius:999px;
+      padding:8px 14px;
+      font-weight:600;
+      background:rgba(15,23,42,.06);
+      color:var(--muted);
+    }
+    .pill.ok{background:rgba(22,163,74,.12);color:var(--ok);}
+    .pill.nok{background:rgba(220,38,38,.12);color:var(--nok);}
+    .pill.rw{background:rgba(234,179,8,.12);color:var(--rw);}
+    ul{margin:0;padding:0 0 0 18px;}
+    li+li{margin-top:8px;}
+    footer{margin-top:12px;font-size:.9rem;color:var(--muted);text-align:center;}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <nav>
+        <a class="back" href="index.html">← Terug naar dashboard</a>
+      </nav>
+      <h1>Analyseoverzicht</h1>
+      <p class="lead">Een compacte analyse van kwaliteitscontroles, gebaseerd op de standaardstatussen in Supabase. Gebruik deze inzichten om gericht acties te plannen.</p>
+      <div class="meta">
+        <span class="meta-item">Laatste update: 15 april 2024</span>
+        <span class="meta-item">Bron: Supabase views</span>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>Belangrijkste KPI's</h2>
+      <div class="grid">
+        <div class="stat">
+          <strong>92%</strong>
+          <span>Gemiddelde goedkeuringsgraad afgelopen maand.</span>
+        </div>
+        <div class="stat">
+          <strong>4,6%</strong>
+          <span>Rapporten die tot rework leiden ("Goed na afkeur").</span>
+        </div>
+        <div class="stat">
+          <strong>3,4%</strong>
+          <span>Definitieve afkeuringen zonder rework.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Statusverdeling</h2>
+      <p>De verdeling van de kwaliteitsstatussen laat zien waar de meeste aandacht naartoe gaat. De focus ligt op het vasthouden van een stabiele goedkeuringsgraad en het verminderen van terugkerende afkeurpunten.</p>
+      <div class="pill-row">
+        <span class="pill ok">OK · 920</span>
+        <span class="pill rw">Goed na afkeur · 46</span>
+        <span class="pill nok">Afgekeurd · 34</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Analyse-hoogtepunten</h2>
+      <ul>
+        <li>Teamleden met meer dan vijf afkeurregistraties ontvangen automatisch een seintje voor coaching.</li>
+        <li>Rework duurt gemiddeld 1,8 dag; het versnellen van feedback verkort de totale doorlooptijd.</li>
+        <li>Veelvoorkomende meldingen betreffen elektrische checks. Extra checklist-items helpen de foutenlast te verkleinen.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Deze analysepagina is statisch opgezet als voorbeeld. Koppel Supabase data of een BI-dienst voor realtime inzichten.
+    </footer>
+  </main>
+</body>
+</html>
