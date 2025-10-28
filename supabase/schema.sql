@@ -57,15 +57,16 @@ drop function if exists public.qc_insert_record_with_photos(text, text, text, te
 drop function if exists public.qc_insert_record_with_photos(text, text, text, text, text, date, text[]);
 drop function if exists public.qc_insert_record_with_photos(text, text, public.qc_status, text, date, jsonb);
 drop function if exists public.qc_insert_record_with_photos(text, text, public.qc_status, text, text, date, jsonb);
+drop function if exists public.qc_insert_record_with_photos(text, jsonb, date, text, text, public.qc_status, text);
 
 create function public.qc_insert_record_with_photos(
-  p_serial text,
-  p_worker_initials text,
-  p_status public.qc_status,
-  p_report text,
   p_description text,
+  p_photo_paths jsonb,
   p_qc_date date,
-  p_photo_paths jsonb
+  p_report text,
+  p_serial text,
+  p_status public.qc_status,
+  p_worker_initials text
 )
 returns uuid
 language plpgsql
