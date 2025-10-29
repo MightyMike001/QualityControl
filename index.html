@@ -192,6 +192,13 @@
     .btn.ghost{background:rgba(255,255,255,.24);color:#fff;border:1px solid rgba(255,255,255,.45);box-shadow:none;}
     .btn.link{border:none;background:none;color:var(--accent);padding:0;font-weight:600;box-shadow:none;}
     .btn.link:hover{text-decoration:underline;background:none;transform:none;}
+    .cam-controls{position:relative;}
+    .cam-menu{position:relative;display:flex;align-items:center;}
+    .cam-menu button{white-space:nowrap;}
+    .cam-menu-panel{position:absolute;top:calc(100% + 6px);right:0;display:grid;gap:6px;padding:10px;border-radius:16px;background:rgba(255,255,255,.94);box-shadow:0 22px 36px -24px rgba(15,23,42,.45);border:1px solid rgba(15,23,42,.08);min-width:160px;z-index:10;}
+    .cam-menu-panel button{border:none;background:none;padding:8px 12px;border-radius:12px;text-align:left;font-weight:600;color:var(--muted-strong);cursor:pointer;transition:background .2s ease,color .2s ease;}
+    .cam-menu-panel button:hover{background:rgba(215,0,44,.08);color:var(--accent);}
+    .cam-menu-panel button:disabled{opacity:.4;cursor:not-allowed;}
     .tab:focus-visible,.btn:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px;}
     @media (prefers-reduced-motion: reduce){.tab,.btn,input,select,textarea{transition:none}}
     .grid{display:grid;gap:clamp(16px,3vw,24px)}
@@ -295,11 +302,15 @@
       <div>
         <label>Foto's</label>
         <div class="row" style="align-items:center">
-          <div class="col" style="flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap">
-            <button id="openCam" class="btn" type="button">Camera openen</button>
-            <button id="takeShot" class="btn ok" type="button" disabled>Foto nemen</button>
-            <button id="flipCam" class="btn" type="button" disabled>Wissel camera</button>
-            <button id="closeCam" class="btn" type="button" disabled>Sluit camera</button>
+          <div class="col cam-controls" style="flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap">
+            <button id="camPrimary" class="btn" type="button">Camera openen</button>
+            <div class="cam-menu">
+              <button id="camOptions" class="btn ghost" type="button" aria-haspopup="true" aria-expanded="false" disabled>Opties</button>
+              <div id="camOptionsMenu" class="cam-menu-panel" hidden>
+                <button type="button" data-action="flip">Wissel camera</button>
+                <button type="button" data-action="close">Sluit camera</button>
+              </div>
+            </div>
           </div>
         </div>
         <video id="cam" autoplay playsinline muted></video>
@@ -491,14 +502,68 @@
 
     // ===== Camera =====
     let camStream=null, camFacing='environment', camShots=[];
-    async function openCamera(){
-      try{ camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:camFacing}});
-           const v=$('#cam'); v.srcObject=camStream; v.style.display='block';
-           $('#takeShot').disabled=$('#flipCam').disabled=$('#closeCam').disabled=false; }
-      catch{ alert('Camera niet beschikbaar/toestemming geweigerd. Gebruik bestandsupload.'); }
+    function closeCamMenu(){ const menu=$('#camOptionsMenu'); if(menu) menu.hidden=true; const options=$('#camOptions'); if(options) options.setAttribute('aria-expanded','false'); }
+    function toggleCamMenu(){ const options=$('#camOptions'); if(!options || options.disabled) return; const menu=$('#camOptionsMenu'); if(!menu) return; const willOpen=menu.hidden; menu.hidden=!willOpen; options.setAttribute('aria-expanded', willOpen?'true':'false'); }
+    function updateCameraButtons(){
+      const primary=$('#camPrimary');
+      const options=$('#camOptions');
+      const menu=$('#camOptionsMenu');
+      const isActive=!!camStream;
+      if(primary){
+        primary.textContent=isActive?'Foto nemen':'Camera openen';
+        primary.dataset.action=isActive?'snap':'open';
+        primary.classList.toggle('ok', isActive);
+      }
+      if(options){
+        options.disabled=!isActive;
+        if(menu && isActive){ options.setAttribute('aria-expanded', menu.hidden?'false':'true'); }
+        if(!isActive){ closeCamMenu(); }
+      }
+      if(menu){
+        const flipBtn=menu.querySelector('button[data-action="flip"]');
+        const closeBtn=menu.querySelector('button[data-action="close"]');
+        [flipBtn, closeBtn].forEach(btn=>{ if(btn) btn.disabled=!isActive; });
+      }
     }
-    function stopCamera(){ const v=$('#cam'); if(camStream){camStream.getTracks().forEach(t=>t.stop()); camStream=null;} v.srcObject=null; v.style.display='none'; $('#takeShot').disabled=$('#flipCam').disabled=$('#closeCam').disabled=true; }
-    function capturePhoto(){ const v=$('#cam'); if(!v.videoWidth) return; const c=$('#snap'); c.width=v.videoWidth; c.height=v.videoHeight; const ctx=c.getContext('2d'); ctx.drawImage(v,0,0,c.width,c.height); const ts=new Date().toISOString().replace('T',' ').slice(0,19); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(10,c.height-34,200,24); ctx.fillStyle='#fff'; ctx.font='16px system-ui'; ctx.fillText(ts,16,c.height-18); const d=c.toDataURL('image/jpeg',0.85); camShots.unshift(d); renderThumb(d); }
+    async function openCamera(){
+      try{
+        camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:camFacing}});
+        const v=$('#cam');
+        v.srcObject=camStream;
+        v.style.display='block';
+        updateCameraButtons();
+      }catch(err){
+        stopCamera();
+        alert('Camera niet beschikbaar/toestemming geweigerd. Gebruik bestandsupload.');
+      }
+    }
+    function stopCamera(){
+      const v=$('#cam');
+      if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+      v.srcObject=null;
+      v.style.display='none';
+      closeCamMenu();
+      updateCameraButtons();
+    }
+    function capturePhoto(){
+      const v=$('#cam');
+      if(!v.videoWidth) return;
+      closeCamMenu();
+      const c=$('#snap');
+      c.width=v.videoWidth;
+      c.height=v.videoHeight;
+      const ctx=c.getContext('2d');
+      ctx.drawImage(v,0,0,c.width,c.height);
+      const ts=new Date().toISOString().replace('T',' ').slice(0,19);
+      ctx.fillStyle='rgba(0,0,0,.5)';
+      ctx.fillRect(10,c.height-34,200,24);
+      ctx.fillStyle='#fff';
+      ctx.font='16px system-ui';
+      ctx.fillText(ts,16,c.height-18);
+      const d=c.toDataURL('image/jpeg',0.85);
+      camShots.unshift(d);
+      renderThumb(d);
+    }
     function renderThumb(data){
       const wrap=document.createElement('div');
       wrap.className='thumb';
@@ -519,6 +584,8 @@
       wrap.appendChild(del);
       $('#thumbs').prepend(wrap);
     }
+
+    updateCameraButtons();
 
     // ===== Tabs =====
     const tabIds=['form','dashboard','analysis'];
@@ -893,17 +960,50 @@
     }
 
     // ===== Wire camera buttons =====
-    $('#openCam').addEventListener('click', openCamera);
-    $('#takeShot').addEventListener('click', capturePhoto);
-    $('#flipCam').addEventListener('click', async ()=>{ camFacing=(camFacing==='environment')?'user':'environment'; stopCamera(); await openCamera(); });
-    $('#closeCam').addEventListener('click', stopCamera);
+    $('#camPrimary').addEventListener('click', async e=>{
+      const action=e.currentTarget.dataset.action;
+      if(action==='open'){
+        await openCamera();
+      }else if(action==='snap'){
+        capturePhoto();
+      }
+    });
+    $('#camOptions').addEventListener('click', toggleCamMenu);
+    $('#camOptionsMenu').addEventListener('click', async e=>{
+      const btn=e.target instanceof Element ? e.target.closest('button[data-action]') : null;
+      if(!btn || btn.disabled) return;
+      const action=btn.dataset.action;
+      if(action==='flip'){
+        camFacing=(camFacing==='environment')?'user':'environment';
+        stopCamera();
+        await openCamera();
+      }else if(action==='close'){
+        stopCamera();
+      }
+      closeCamMenu();
+    });
+    document.addEventListener('click', e=>{
+      const menu=$('#camOptionsMenu');
+      if(!menu || menu.hidden) return;
+      const options=$('#camOptions');
+      if(options && (e.target===options || options.contains(e.target))) return;
+      if(menu.contains(e.target)) return;
+      closeCamMenu();
+    });
 
     // ===== Photo viewer events =====
     $('#viewerClose').addEventListener('click', closeViewer);
     $('#photoViewer').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeViewer(); });
     $('#viewerPrev').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex-1+viewerPhotos.length)%viewerPhotos.length; updateViewer(); }});
     $('#viewerNext').addEventListener('click', ()=>{ if(viewerPhotos.length>1){ viewerIndex=(viewerIndex+1)%viewerPhotos.length; updateViewer(); }});
-    document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#photoViewer').hidden){ closeViewer(); } });
+    document.addEventListener('keydown', e=>{
+      if(e.key!=='Escape') return;
+      let handled=false;
+      if(!$('#photoViewer').hidden){ closeViewer(); handled=true; }
+      const menu=$('#camOptionsMenu');
+      if(menu && !menu.hidden){ closeCamMenu(); handled=true; }
+      if(handled) e.preventDefault();
+    });
 
     activateTab('form');
 
